@@ -1176,7 +1176,7 @@ function updateForecastCurve(){
  const nodes=[...svg.querySelectorAll('g[data-plan-point]')];
  const milestones=plan.milestones;
  const outcome=m=>{
-  const evidence=(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+  const evidence=(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title)).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
   if(evidence){const score=entryRating(evidence).score;return score===null?'unclear':score<0?'negative':score===0?'mixed':'positive'}
   return m.reported_evidence?m.evidence_direction||'unclear':'none';
  };
@@ -1266,11 +1266,11 @@ const navigationPaths={
  ['Validate with a technical or industry partner','Test performance under realistic operating constraints.','Partner evaluation and agreed performance measures']]}
 };
 function navigatorEvidence(m){
- const entries=(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title);
+ const entries=state.plan?.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title);
  return Boolean(m.reported_evidence||entries.length);
 }
 function navigationPathSuggestions(){
- const text=[getContext().description,getContext().ventureType,state.plan?.summary].filter(Boolean).join(' ').toLowerCase();
+ const active=planVentureContext();const text=[active.description,active.ventureType,state.plan?.summary].filter(Boolean).join(' ').toLowerCase();
  return /research|prototype|technology|engineering|manufactur|hardware|clinical|lab|scientif/.test(text)?'research':/saas|platform|subscription|software|app|digital/.test(text)?'growth':/cafe|café|retail|shop|food|service|restaurant/.test(text)?'steady':'steady';
 }
 function renderNavigator(){
