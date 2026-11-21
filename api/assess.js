@@ -31,6 +31,24 @@ Choose the score as a provisional estimate of this specific event's direction an
 
 
 
+function assessRouteSpecificity(route,context,milestones){
+ const text=[context.name,context.description,context.planSummary,...milestones.flatMap(m=>[m.title,m.outcome,m.target,m.evidence])].filter(Boolean).join(' ').toLowerCase();
+ const common=new Set(['business','company','project','startup','entrepreneur','customer','customers','product','products','service','services','market','growth','platform','solution','process','current','month','months','test','pilot','reported','data','users','user','increase','improve','scale','existing','future','achieve','establish','develop','demonstrate','create','validate','secure','expand','evidence','revenue','target','outcomes','operational','adoption','first','second','step','milestone','model','further','more','with','within','based','from','through','into','have','their','that','this','then','when','which','been','will','must','should','after','before','each','than','over','what','were','only','paid','payment','active','repeat','rate','rates','number','measure','measured','such','also','specific','real','initial','final','unit','units','retention','cost','costs','volume','sales','value','new','key','and','the','for','our','are','not','can','per','its','all','how','why','use','using','aim']);
+ const tokens=v=>new Set(String(v||'').toLowerCase().match(/[a-zà-ÿ]{4,}/g)||[]);
+ const anchors=[...tokens(text)].filter(w=>!common.has(w));
+ // Require genuine terms from this venture rather than generic growth prose.
+ // Only enforce when substantial source context has been supplied.
+ if(anchors.length<3)return {ok:true,reason:''};
+ const weak=[];
+ for(const step of route.steps){
+  const wording=[step.title,step.objective,step.success_criteria,step.required_evidence,step.prerequisites].join(' ').toLowerCase();
+  const hasAnchor=anchors.some(w=>wording.includes(w));
+  if(!hasAnchor)weak.push(step.title);
+ }
+ if(weak.length>Math.max(1,Math.floor(route.steps.length*.25)))
+  return {ok:false,reason:'Milestones lack references to the venture and its specific workflow: '+weak.slice(0,3).join('; ')};
+ return {ok:true,reason:''};
+}
 async function generateGrowthRoutes(req,res){
  const c=readContext(req.body?.context),input=req.body||{},count=Number(input.count);
  const ids=['steady','hockey','s','steps','long'];
@@ -49,7 +67,11 @@ async function generateGrowthRoutes(req,res){
   'Baseline must be cited as reported only if explicitly present, else write Assumption — unverified. Never upgrade reported founder claims to independently verified. Every future target is illustrative, not achieved. Ambitious targets should be aspirational and explained as difficult; do not give unsupported probability percentages. Numeric targets should be realistic relative to resources and stage; state assumptions. Assess all five routes independently high/moderate/low, and recommend exactly one that best fits the entrepreneur objectives and business evidence. Never block a low-suitability route. Keep recommended route separate from what the user selected.',
   'Steady route: manageable repeat customers/revenue and reliable incremental expansion. Hockey: paid conversion, retention, acquisition economics and compounding growth only after scalable channels work; acceleration must follow larger justified target increases, and low-suitability businesses need a clear explanation of missing capital, market size or capacity. Critically explain late-stage acquisition rates, unit economics, dependencies, financing and why steep growth is exceptionally difficult, not inevitable. If the milestones cannot justify acceleration, produce a modest trajectory rather than manufacturing a hockey stick.',
   'S-curve: early experiments, adoption acceleration, then maturity/limited incremental growth; explain why saturation is not business failure and consider a second innovation cycle. Step changes: distinct breakthroughs such as contracts, permits, facilities or acquisitions with substantially different measured impact and plateaus, including concentration risk. Long R&D: feasibility, repeatability, field and regulatory readiness, later commercial deployment; choose a technical readiness metric if revenue is premature; technical breakthrough is not proof of customers. Assess suitability and distinct routes relative to entrepreneur objectives.',
-  'Do not generate generic, duplicated milestones or identical growth profiles. Targets must make the strategic differences visible, but never invent achieved evidence or claim verified forecasting. Return JSON only.'
+  'Do not generate generic, duplicated milestones or identical growth profiles. Targets must make the strategic differences visible, but never invent achieved evidence or claim verified forecasting. Return JSON only.',
+  'CRITICAL: Ground each milestone in the SPECIFIC product/service, buyer, workflow, revenue model and present bottleneck stated in this exact business input. Do not output placeholders such as acquire users, gain traction, create partnerships, improve product, scale operations, validate demand without naming precisely WHO, WHAT, HOW MANY and HOW measured. Never introduce a sector, customer, product, education use case, partnership or business model not supported by the venture. Name the physical or digital workflow in the objective, actual customer segment in success criteria, and realistic evidence source in required_evidence.',
+  'A milestone must solve a business-specific uncertainty or unlock a dependency for the NEXT milestone. If the business has reported a negative result, address its cause before recommending scaling. Avoid repeating research or prototypes that the input reports as completed. Distinguish reported outcomes from projections, and do not convert proposed results into achievements. Tie targets and their rationales to the provided baseline, market and operational constraints. For a reusable-container network like the illustrative café venture, important gates may involve observed repeat return behaviour, cost-per-wash, participating paying café contracts and repeat service fees—not general SaaS user counts; apply the analogous domain-specific reasoning to ANY business.',
+  'For each step, title should identify an actionable measurable venture-specific achievement (not a broad phase). objective should explain the distinct action, success_criteria should contain a quantitative acceptance test, prerequisites should name actual blockers, required_evidence should specify a concrete record that can be checked, target_rationale should explain exactly why the route metric changes. If there is insufficient input to justify an ambitious later outcome, say the assumption and make the step aspirational rather than inventing figures.'
+
  ].join('\n');
  try{
   // The old single request demanded as many as fifty detailed milestones,
@@ -118,6 +140,8 @@ async function generateGrowthRoutes(req,res){
    if(!route||!Array.isArray(route.steps)||route.steps.length<3||route.steps.length>count)throw Error('Invalid number of steps');
    let prev=Number(route.metric_baseline),lastMonth=0;
    if(!Number.isFinite(prev)||prev<0)throw Error('Invalid baseline');
+   const grounded=assessRouteSpecificity(route,c,milestones);
+   if(!grounded.ok)throw new Error('Route '+id+' is too generic: '+grounded.reason);
    const steps=route.steps.map(step=>{
     const target=Number(step.target_value);
     if(!Number.isFinite(target)||target<prev)throw Error('Invalid cumulative target');
