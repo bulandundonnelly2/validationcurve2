@@ -612,7 +612,7 @@ function hockeyStickRoadmap(snapshot){
 let routeRequestInFlight=null;
 function growthRouteSignature(){
  const plan=state.plan||{};
- return JSON.stringify({model:'milestone-targets-v5-shape-evidence-check',business:plan.fromDocument?inferredBusinessType():(state.comparisonBusinessType||inferredBusinessType()),context:assessmentContext(),ventureIdentity:plan.ventureIdentity||null,count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30))});
+ return JSON.stringify({model:'milestone-targets-v6-full-width-route-shape',business:plan.fromDocument?inferredBusinessType():(state.comparisonBusinessType||inferredBusinessType()),context:assessmentContext(),ventureIdentity:plan.ventureIdentity||null,count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30))});
 }
 function tailoredRoute(id){
  const cache=state.growthRouteCache;
@@ -706,7 +706,7 @@ function setupReferenceControls(){
  const options=Object.keys(businessPathDefaults);
  toolbar.innerHTML='<span class="reference-intro">Routes</span><button type="button" id="toggleAllRoutes" class="all-routes-toggle" aria-label="Turn all comparison routes on or off" aria-pressed="'+(referenceModels.every(m=>state.comparisonCurves.includes(m.id))?'true':'false')+'">'+(referenceModels.every(m=>state.comparisonCurves.includes(m.id))?'All routes off':'All routes on')+'</button><label>Business <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<label class="route-count-label">Max future milestones <select id="routeMilestoneCount" aria-label="Maximum number of future milestones on each route">'+[3,4,5,6,7,8,9,10].map(n=>'<option value="'+n+'"'+(n===routeMilestoneCount()?' selected':'')+'>'+n+'</option>').join('')+'</select></label><button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">About routes</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
- explainer.textContent='All routes begin at the first milestone. Horizontal position reflects estimated months. Vertical position comes from milestone targets: comparable routes sharing the same metric, units and baseline use a common scale; different metrics are normalized separately and must not be compared by absolute height. Dashed paths are conditional plans, not verified progress.';
+ explainer.textContent='Shape comparison: each route spans its own estimated timeline and rises according to its numerical milestone targets. The x-position shows percentage of that route duration (not equal calendar months across routes); y-position shows percentage of its proposed target. Click points for months, measurable targets, evidence and difficulty. These are not verified forecasts.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  const intelligence=document.createElement('div');intelligence.className='route-generation-status';
  intelligence.innerHTML='<span id="routeGenerationStatus" role="status" aria-live="polite">Preparing route analysis…</span><button id="regenerateGrowthRoutes" type="button" title="Reassess when the business plan, milestones or evidence change">Reassess routes</button>';
@@ -923,10 +923,13 @@ function plotIntelligentRoute(group,model,route,nodes,ns){
  const startCircle=nodes[0]?.querySelector('circle');
  const x0=startCircle?Number(startCircle.getAttribute('cx')):75;
  const y0=Math.max(125,Math.min(170,startCircle?Number(startCircle.getAttribute('cy')):151));
- const routes=state.growthRouteCache?.routes||[route];
- const months=Math.max(1,...routes.map(r=>Number(r.steps?.at(-1)?.months_from_start)||1));
- const sharedMax=window.ValidationRouteEngine?.sharedComparisonMax(route,routes);
- const pts=window.ValidationRouteEngine?.layout(route,x0,y0,1550,months,sharedMax);
+ // Display each route's elapsed milestone journey across the full width.
+ // This is a SHAPE view: x = fraction of this route's timeline; y = fraction
+ // of this route's own cumulative target, not a common absolute business metric.
+ // Raw month and absolute business target remain attached to each checkpoint.
+ const months=Number(steps.at(-1)?.months_from_start)||1;
+ const sharedMax=null;
+ const pts=window.ValidationRouteEngine?.layout(route,x0,y0,1550,months);
  if(!pts){console.warn('Invalid route coordinates',model.id);return}
  const path=document.createElementNS(ns,'path');
  path.setAttribute('class','reference-path named-route-path');
@@ -935,7 +938,7 @@ function plotIntelligentRoute(group,model,route,nodes,ns){
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- title.textContent=model.name+' · '+route.metric+' ('+route.metric_unit+'). '+(route.shape_assessment?.matches===false?'Caution: the proposed milestones do not yet support this named trajectory. '+route.shape_assessment.reason+'. ':'')+'Horizontal: months. Vertical: '+(sharedMax?'shared scale (0–'+sharedMax+' '+route.metric_unit+') for routes measuring the same metric':'percentage of this route target; other metric types are not directly comparable')+'. These are conditional goals, not observed growth.';
+ title.textContent=model.name+' · '+route.metric+' ('+route.metric_unit+'). '+(route.shape_assessment?.matches===false?'Caution: the proposed milestones do not yet support this named trajectory. '+route.shape_assessment.reason+'. ':'')+'Horizontal: percentage of this route duration ('+months+' months total). Vertical: percentage of its proposed cumulative target. Select a point to see actual target and month; relative curves are not comparable forecasts.';
  path.appendChild(title);group.appendChild(path);
  steps.forEach((step,i)=>{
   const [x,y]=pts[i+1];
