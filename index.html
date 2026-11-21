@@ -336,7 +336,7 @@ function drawReferenceCurves(){
  svg.querySelector('#referenceOverlays')?.remove();
  chart.querySelector('.route-guidance')?.remove();
  const selected=Array.isArray(state.comparisonCurves)?state.comparisonCurves:[];
- if(!selected.length)return;
+ if(!selected.length){if(typeof applyJourneyMode==='function')applyJourneyMode();return;}
  const snap=routeSnapshot(),points=[...svg.querySelectorAll('g[data-plan-point]')];
  const latest=snap.last,point=points[latest?latest.i:0]?.querySelector('circle');
  const anchorX=point?Number(point.getAttribute('cx')):75;
@@ -395,6 +395,7 @@ function drawReferenceCurves(){
   chart.appendChild(p);
   p.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
  }
+ if(typeof applyJourneyMode==='function')applyJourneyMode();
 }
 function openRouteGuidance(id,index){
  state.activeRoute=id;
@@ -573,11 +574,11 @@ function classifyJourneyStages(){
   const linked=(state.entries||[]).some(e=>!e.demo&&e.linkedMilestone===m.title);
   const reported=linked||!!m.reported_evidence;
   const title=[m.title,m.target,m.why].join(' ').toLowerCase();
-  const foundation=!reported&&/idea|initial research|founder|explor|discovery|brainstorm|concept|interview|research|planning|problem validation/.test(title);
+  const foundation=/idea|initial research|founder|explor|discovery|brainstorm|concept|interview|research|planning|problem validation/.test(title);
   return {i,reported,foundation};
  });
- const firstReported=observations.find(o=>o.reported)?.i??milestones.length;
- return observations.map(o=>({...o,stage:o.reported?'validation':o.foundation&&o.i<=firstReported?'foundation':'future'}));
+ const firstSubstantive=observations.find(o=>o.reported&&!o.foundation)?.i??milestones.length;
+ return observations.map(o=>({...o,stage:o.foundation&&o.i<=firstSubstantive?'foundation':o.reported?'validation':'future'}));
 }
 function setupJourneyModes(){
  const chart=$('#planView .map-chart');
