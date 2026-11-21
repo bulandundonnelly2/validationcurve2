@@ -128,6 +128,9 @@ body.curve-open #planSection .section-head{justify-content:space-between;gap:12p
 .journey-modes button[aria-pressed=true]{background:#e4f1d6;color:#1c5135;border-color:#cbe0be}
 .journey-mode-explainer{margin-left:5px;color:#9fbcaa}
 .map-chart .route-guidance[hidden]{display:none}
+</style><style>
+.map-chart svg .historical-reference{opacity:.7;stroke-width:2;stroke-dasharray:3 5}
+.map-chart svg #referenceOverlays g[role=button]:hover circle{stroke:#fff;stroke-width:2.6}
 </style></head><body><div class="shell"><main class="main"><div class="brand"><span class="mark">✳</span> validation curve.</div><div class="hero"><div><h1>Your idea, mapped.</h1><p>Your validation milestones, in one place.</p></div></div><section class="card" style="margin-top:20px" id="planSection"><div class="section-head"><div><h2>Your validation curve</h2></div><div class="validation-top-actions"><button type="button" class="validation-toggle" id="toggleNavigator" hidden aria-expanded="false" aria-controls="navigatorPanel">◇ Navigate</button><button type="button" class="validation-toggle" id="toggleValidation" hidden aria-expanded="false" aria-controls="validationLayer">⚖ Value, difficulty & ambition</button><button class="textbtn" id="openPlan">New curve ↗</button></div></div><div id="planView"></div><aside id="navigatorPanel" hidden aria-label="Business Path Navigator"></aside><div id="validationLayer" class="validation-controls" hidden></div><form class="form" id="planForm"><label class="field">Business plan or pitch deck <span style="font-weight:400;color:#aaa">(optional: PDF, PPTX, DOCX or TXT; up to 2.5 MB)</span><input type="file" id="planFile" accept=".pdf,.pptx,.docx,.txt"></label><label class="field">Describe your idea <span style="font-weight:400">(or upload a document above)</span><textarea id="ambitions" maxlength="2000" placeholder="e.g. I’m starting a local bakery and want to find my first regular customers."></textarea></label><input type="hidden" id="horizon" maxlength="100"><p class="hint">Your information is sent to Gemini to create a proposed curve.</p><div id="planStatus" aria-live="polite" class="hint"></div><div class="form-actions"><button type="button" class="cancel" id="cancelPlan">Cancel</button><button class="primary" id="generatePlan">Create curve ↗</button></div></form></section><details class="secondary-tools"><summary>More options</summary><button class="profile-button" id="add">＋ Add progress</button><details class="optional-context"><summary>Optional: add more venture details</summary><section class="profile-card" id="ventureSection"><div><div class="eyebrow">YOUR STARTING POINT</div><h2>Your venture. Your milestones.</h2><p id="ventureSummary">Tell us about your business, startup or project and what matters to you. We’ll use this context to make milestones and assessments relevant to your journey.</p><div id="ventureTags" class="venture-tags"></div></div><button class="profile-button" id="editVenture" type="button">＋ Add your venture</button></section></details><div id="demo" class="demo"><span>These are example moments to show you around. Add your own to start your journey.</span><button id="clearDemo">Clear examples</button></div><div class="grid"><section class="card chart-card"><div class="card-head"><div><h2>Your validation curve</h2><div class="sub">Each rated moment adds an estimated step to your journey. The line can rise, stay flat or fall; it is a guide, not a measure of your worth or a guarantee of success.</div></div><span class="pill">✳ &nbsp; All time</span></div><div id="chart" class="chart"></div><div class="chart-foot"><span id="firstDate">YOUR START</span><span>MILESTONE ORDER →</span><span id="lastDate">TODAY</span></div><div id="chartMilestones" class="chart-milestones" aria-label="Milestones shown on the curve"></div></section><section class="card"><div class="card-head"><div><h2>The little things add up</h2><div class="sub">A snapshot of your journey so far</div></div><span style="color:#9aae95">✳</span></div><div class="stats"><div class="stat"><b id="count">0</b><span>moments recorded</span></div><div class="stat"><b id="evidence">0</b><span>rated moments</span></div></div><div class="insight" id="insight"></div><div class="insight" id="patterns"></div><div class="hint">New moments are assessed using any venture details you provide. Older entries may use earlier ratings; examples are excluded from your graph. You can adjust or reassess a moment. Reassessment also sends your current venture details, proposed milestones and recent moment titles to Gemini.</div></section></div><div class="bottom"><section class="card"><div class="section-head"><div><h2>Moments that matter</h2><div class="sub">The steps, discoveries and wins along the way</div></div><button class="textbtn" id="add2">＋ Add moment</button></div><div id="entries"></div></section><div><section class="card direction"><div class="eyebrow">YOUR NEXT STEP</div><h2>Keep the momentum going.</h2><p id="autoNext">Add a moment and we’ll suggest a next step based on what you’ve shared.</p><button class="action" id="useNext" style="display:none">Use this suggestion ↗</button><p>Or write your own next step below.</p><input class="next-input" id="next" placeholder="e.g. Speak to one potential customer" aria-label="Your next step"><button class="action" id="saveNext">Save my next step <span style="float:right">↗</span><small id="nextStatus">Make it achievable, make it yours.</small></button></section><div class="quote">“There is no right pace. There is only your path.”</div></div></div></details></main></div><dialog id="ventureDialog" class="modal"><form class="form" id="ventureForm"><h2>Make it your journey</h2><p>Every business or project develops differently. Add the context you want the app to consider; you can change it any time.</p><label class="field">Venture name <span style="font-weight:400">(optional)</span><input name="name" maxlength="100" placeholder="e.g. Your business or project name"></label><label class="field">What are you working on, and who is it for?<textarea name="description" maxlength="800" placeholder="Tell us about your idea, users or customers"></textarea></label><label class="field">Type of venture<input name="ventureType" maxlength="120" placeholder="e.g. Independent business, software, creative work, research or community project"></label><label class="field">Where are you now?<input name="stage" maxlength="100" placeholder="e.g. Exploring an idea, early research, prototype, launching"></label><label class="field">What are you working towards?<textarea name="ambition" maxlength="800" placeholder="Describe your goal in your own words"></textarea></label><label class="field">Your preferred timeframe <span style="font-weight:400">(optional)</span><input name="horizon" maxlength="100" placeholder="e.g. Over the next year, or when funding is secured"></label><p class="hint">Saved in this browser. When you request an AI assessment or plan, these details are sent to Gemini with your entry or document. Changes apply to new assessments; you can reassess older moments.</p><div class="form-actions"><button type="button" class="cancel" id="cancelVenture">Cancel</button><button class="primary" type="submit">Save my context</button></div></form></dialog><dialog id="ratingDialog" class="modal"><form class="form" id="ratingForm"><h2>Adjust this assessment</h2><p>AI suggestions can miss context. Choose how this moment affected your own journey; your choice will be shown on the graph.</p><label class="field">Your assessment<select name="rating"><option value="3">Major milestone</option><option value="2">Meaningful milestone</option><option value="1">Small but meaningful step</option><option value="0">Mixed or inconclusive</option><option value="-1">Setback or concern</option><option value="-2">Significant setback</option><option value="none">Not enough information to rate</option></select></label><label class="field">Why? <span style="font-weight:400">(optional)</span><textarea name="reason" maxlength="500" placeholder="Add the context that matters to you"></textarea></label><div class="form-actions"><button type="button" class="cancel" id="cancelRating">Cancel</button><button type="button" class="cancel" id="resetRating">Use suggested assessment</button><button class="primary" type="submit">Save assessment</button></div></form></dialog><dialog id="dialog" class="modal"><form class="form" id="form"><h2>Capture a moment</h2><p>Describe a step, learning, milestone or setback. Your entry, venture context, proposed milestones and up to 12 recent moment titles with dates and categories are sent to Gemini for assessment.</p><label class="field">What happened?<textarea name="title" required maxlength="500" placeholder="Tell us in your own words, however small it feels…"></textarea></label><div id="analysis" style="background:#f1f6ec;padding:14px;border-radius:10px;margin-bottom:16px;font-size:12px;line-height:1.6;color:#516a53">Describe what happened and why it matters to your journey. Gemini will suggest an assessment when you save.</div><label class="field">Anything else to remember? <span style="font-weight:400;color:#aaa">(optional)</span><textarea name="note" maxlength="500" placeholder="A thought, discovery or reason this matters…"></textarea></label><label class="field">Date<input type="date" name="date" required></label><div class="form-actions"><button type="button" class="cancel" id="cancel">Cancel</button><button class="primary">Save moment</button></div></form></dialog><script>
 const key='smallsteps-v1';const examples=[{id:'e1',title:'Had my first conversation with a potential customer',category:'Customer feedback',note:'A useful reminder that listening is a form of progress.',date:'2026-09-12',demo:true},{id:'e2',title:'Put the first version of my idea on paper',category:'Product',note:'It doesn’t need to be perfect to be a beginning.',date:'2026-10-03',demo:true},{id:'e3',title:'Made a connection with someone who can help',category:'Connection',note:'A new perspective and an encouraging conversation.',date:'2026-10-28',demo:true}];let state;try{state=JSON.parse(localStorage.getItem(key))||{entries:examples,next:''}}catch{state={entries:examples,next:''}};const $=s=>document.querySelector(s);function save(){localStorage.setItem(key,JSON.stringify(state))}function esc(x){return String(x||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function format(d){return new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
 function getContext(){const p=state.profile||{};return {name:p.name||'',description:p.description||'',ventureType:p.ventureType||'',stage:p.stage||'',ambition:p.ambition||'',horizon:p.horizon||''}}
@@ -312,7 +315,7 @@ function setupReferenceControls(){
  const options=Object.keys(businessPathDefaults);
  toolbar.innerHTML='<span class="reference-intro">Explore routes</span><label>Business type <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">How to follow a route?</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
- explainer.textContent='Routes are calculated from current reported milestones and missing tests. Select a route marker for the actions needed to move toward that strategy. The lines represent proposed validation steps, not measured sector growth or guaranteed future performance.';
+ explainer.textContent='The dotted paths now compare the recorded milestones from the beginning as hypothetical scenarios. Click a historical comparison point to review that milestone. Paths continuing to the right identify proposed next evidence. These are not measured sector benchmarks or forecasts.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
   state.comparisonBusinessType=e.target.value;
@@ -341,6 +344,12 @@ function drawReferenceCurves(){
  const latest=snap.last,point=points[latest?latest.i:0]?.querySelector('circle');
  const anchorX=point?Number(point.getAttribute('cx')):75;
  const anchorY=point?Number(point.getAttribute('cy')):170;
+ const observedPoints=snap.reported.map(o=>{
+  const c=points[o.i]?.querySelector('circle');
+  return c?{i:o.i,x:Number(c.getAttribute('cx')),y:Number(c.getAttribute('cy')),title:o.m.title}:null;
+ }).filter(Boolean);
+ const baseline=observedPoints[0]||null;
+ const historyEnd=observedPoints[observedPoints.length-1]||null;
  svg.setAttribute('viewBox','0 0 820 205');
  const ns='http://www.w3.org/2000/svg',group=document.createElementNS(ns,'g');
  group.setAttribute('id','referenceOverlays');
@@ -354,6 +363,46 @@ function drawReferenceCurves(){
  });
  const lanes=grouped.length;
  grouped.forEach(({model,steps,readiness,index})=>{
+  // Historical comparison uses the same milestones, start and fixed display scale.
+  // Theoretical paths are normalized shape scenarios, NOT industry peer averages.
+  if(baseline&&historyEnd&&historyEnd.x>baseline.x+1){
+   const startX=baseline.x,endX=historyEnd.x;
+   const ambition=Math.max(0,Math.min(3,Number(state.validationAmbition)||0));
+   const targetRise=40+ambition*9;
+   const pathPoints=observedPoints.map(o=>{
+    const t=Math.max(0,Math.min(1,(o.x-startX)/(endX-startX)));
+    const shape=Math.max(0,Math.min(1,model.formula(t)));
+    return {x:o.x,y:Math.max(25,Math.min(178,baseline.y-targetRise*shape)),o};
+   });
+   if(pathPoints.length>1){
+    const hist=document.createElementNS(ns,'path');
+    hist.setAttribute('class','reference-path historical-reference');
+    hist.setAttribute('stroke',model.color);
+    hist.setAttribute('stroke-width','2.2');
+    hist.setAttribute('stroke-dasharray','3 4');
+    hist.setAttribute('opacity','.65');
+    hist.setAttribute('d',pathPoints.map((p,k)=>(k?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' '));
+    const t=document.createElementNS(ns,'title');
+    t.textContent=model.name+' hypothetical historical trajectory, from the first reported milestone. Compared at each reported milestone; not an external benchmark.';
+    hist.appendChild(t);group.appendChild(hist);
+    pathPoints.slice(1).forEach(({x,y,o},j)=>{
+     const marker=document.createElementNS(ns,'g');
+     marker.setAttribute('role','button');marker.setAttribute('tabindex','0');
+     marker.style.cursor='pointer';
+     marker.setAttribute('aria-label','Compare '+o.title+' against '+model.name);
+     const c=document.createElementNS(ns,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);
+     c.setAttribute('r','4.5');c.setAttribute('fill',model.color);c.setAttribute('stroke','#16382c');c.setAttribute('stroke-width','1');
+     marker.appendChild(c);
+     const title=document.createElementNS(ns,'title');
+     const difference=(o.y-y);
+     title.textContent=model.name+' at '+o.title+': '+(Math.abs(difference)<4?'similar to':difference>0?'below':'above')+' the illustrative trajectory. This difference is graphical, not a validated performance score.';
+     marker.appendChild(title);
+     marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
+     marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
+     group.appendChild(marker);
+    });
+   }
+  }
   if(!steps.length)return;
   const offset=index-(lanes-1)/2;
   const shift=offset*24;
@@ -397,6 +446,21 @@ function drawReferenceCurves(){
  }
  if(typeof applyJourneyMode==='function')applyJourneyMode();
 }
+function openHistoricalComparison(id, milestoneIndex){
+ const model=referenceModels.find(m=>m.id===id),m=state.plan?.milestones?.[milestoneIndex];
+ if(!model||!m)return;
+ state.navigatorOpen=true;state.validationPanelOpen=false;state.activeRoute=id;
+ save();renderValidationLayer();renderNavigator();
+ const panel=$('#navigatorPanel');
+ panel.querySelector('.history-comparison')?.remove();
+ const section=document.createElement('div');section.className='navigator-card history-comparison';
+ const snap=routeSnapshot(),obs=snap.observations[milestoneIndex];
+ const steps=routeSteps(id,snap);
+ section.innerHTML='<div class="navigator-sub">EARLIER MILESTONE COMPARISON</div><h4>'+esc(m.title)+'</h4><p>Comparison path: '+esc(model.name)+'. The reference shape is a hypothetical scenario aligned to the first reported milestone, not a statistical sector benchmark.</p><p>Reported outcome: '+esc(obs?.direction||'unknown')+'. '+(m.reported_evidence?'Evidence was reported in the uploaded document.':'Review any attached evidence to judge the result.')+'</p><p>What would support this strategy now: '+esc(steps[0]?.evidence||'Review the venture evidence and define a measurable next test.')+'</p><button type="button" id="historyRouteActions">Explore required next steps</button>';
+ const card=panel.querySelector('.navigator-card');if(card)card.after(section);else panel.appendChild(section);
+ section.querySelector('#historyRouteActions').onclick=()=>openRouteGuidance(id,0);
+}
+
 function openRouteGuidance(id,index){
  state.activeRoute=id;
  state.navigatorOpen=true;state.validationPanelOpen=false;
