@@ -827,10 +827,10 @@ function findMilestonePosition(m,plan){
  // Planned milestones belong after historical evidence, ordered by relevant validation stage.
  if(!m.reported_evidence)return list.length;
  // For undated reported milestones, match the relevant development stage rather than treating score as time.
- const stage=milestoneStage(m);
- const next=list.findIndex(item=>milestoneStage(item)>stage);
+ const stage=m.assessed_stage?Math.max(0,['foundation','prototype','pilot','commercial','scale'].indexOf(m.assessed_stage)):milestoneStage(m);
+ const next=list.findIndex(item=>(item.assessed_stage?Math.max(0,['foundation','prototype','pilot','commercial','scale'].indexOf(item.assessed_stage)):milestoneStage(item))>stage);
  if(next>=0)return next;
- const last=list.reduce((index,item,i)=>milestoneStage(item)<=stage?i:index,-1);
+ const last=list.reduce((index,item,i)=>(item.assessed_stage?Math.max(0,['foundation','prototype','pilot','commercial','scale'].indexOf(item.assessed_stage)):milestoneStage(item))<=stage?i:index,-1);
  return last+1;
 }
 function decideMilestoneDirection(text,aiScore){
