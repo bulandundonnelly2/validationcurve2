@@ -39,6 +39,51 @@
   const compatible=routes.filter(r=>validRoute(r)&&key(r)===key(route)&&Number(r.metric_baseline)===Number(route.metric_baseline));
   return compatible.length>1?Math.max(...compatible.map(r=>Number(r.steps[r.steps.length-1].target_value))):null;
  }
+ function diagnoseRoute(route){
+  if(!validRoute(route))return {matches:false,reason:'Invalid milestone targets or chronology'};
+  const s=route.steps,base=Number(route.metric_baseline);
+  const gains=s.map((v,i)=>Number(v.target_value)-(i?Number(s[i-1].target_value):base));
+  const months=s.map((v,i)=>v.months_from_start-(i?s[i-1].months_from_start:0));
+  const velocity=gains.map((g,i)=>g/months[i]);
+  const total=gains.reduce((a,b)=>a+b,0);
+  if(total<=0)return {matches:false,reason:'No measurable advancement from baseline'};
+  const n=gains.length,half=Math.max(1,Math.floor(n/2));
+  const mean=a=>a.reduce((x,y)=>x+y,0)/Math.max(1,a.length);
+  const early=mean(velocity.slice(0,half)),late=mean(velocity.slice(half));
+  const endEarly=velocity[0],endLate=velocity[n-1];
+  const nearZero=gains.filter(g=>g<=Math.max(.01,total*.025)).length;
+  const largest=Math.max(...gains);
+  const topTwo=[...gains].sort((a,b)=>b-a).slice(0,2).reduce((a,b)=>a+b,0);
+  let matches=true,reason='';
+  switch(route.id){
+   case 'steady':
+    // A measured gradual increase, with no single speculative breakthrough
+    // making up the overwhelming majority of progress.
+    matches=largest/total<.52&&nearZero<=Math.ceil(n*.5);
+    reason='Steady growth needs several material incremental gains, not one breakthrough';
+    break;
+   case 'hockey':
+    matches=n>=3&&late>early*1.75&&endLate>endEarly*1.6&&gains.slice(-half).reduce((a,b)=>a+b,0)>total*.56;
+    reason='Hockey stick needs demonstrably accelerating progress per month after early validation';
+    break;
+   case 's':
+    matches=n>=4&&Math.max(...velocity.slice(1,-1))>Math.max(velocity[0],velocity[n-1])*1.35&&velocity[n-1]<Math.max(...velocity.slice(1,-1))*.68;
+    reason='S-curve needs a fast middle adoption phase followed by slower marginal gains';
+    break;
+   case 'steps':
+    matches=(nearZero>=1||velocity.some((v,i)=>i>0&&v<velocity[i-1]*.25))&&largest/total>.32&&topTwo/total>.56;
+    reason='Step changes need a plateau or preparation period and one or two evidence-backed, disproportionately large breakthroughs';
+    break;
+   case 'long':
+    // Long R&D is not assumed to mean flat technical progress; the essential
+    // distinction is a substantial technical development horizon.
+    matches=s.some(v=>v.months_from_start>=18)&&String(route.metric_type||'').toLowerCase()!=='commercial'&&
+      (String(route.metric||'')+' '+String(route.metric_unit||'')).toLowerCase().match(/readiness|prototype|technical|validation|capability|reliability|performance|certification|trl|test|field|regulator/)!==null;
+    reason='Long R&D should show a substantial technical validation horizon before presumed commercial scaling';
+    break;
+  }
+  return {matches,reason:matches?'Route profile reflects its stated strategy':reason,velocity,gains,total,early,late,nearZero};
+ }
  function inspectRouteShapes(routes){
   const output={};
   for(const route of routes){
@@ -48,5 +93,5 @@
   }
   return output;
  }
- return {ROUTES,validRoute,layout,inspectRouteShapes,sharedComparisonMax};
+ return {ROUTES,validRoute,layout,inspectRouteShapes,sharedComparisonMax,diagnoseRoute};
 });
