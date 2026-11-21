@@ -668,7 +668,7 @@ function setupReferenceControls(){
  const options=Object.keys(businessPathDefaults);
  toolbar.innerHTML='<span class="reference-intro">Routes</span><label>Business <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<label class="route-count-label">Max future milestones <select id="routeMilestoneCount" aria-label="Maximum number of future milestones on each route">'+[3,4,5,6,7,8,9,10].map(n=>'<option value="'+n+'"'+(n===routeMilestoneCount()?' selected':'')+'>'+n+'</option>').join('')+'</select></label><button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">About routes</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
- explainer.textContent='Routes begin at your first business milestone, show comparisons with your reported milestones, then continue into future checkpoints. Each coloured gain is conditional on achieving the required evidence; dashed paths are not verified progress.';
+ explainer.textContent='All routes begin at the first milestone. Horizontal position reflects estimated months. Vertical position comes from milestone targets: comparable routes sharing the same metric, units and baseline use a common scale; different metrics are normalized separately and must not be compared by absolute height. Dashed paths are conditional plans, not verified progress.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  const intelligence=document.createElement('div');intelligence.className='route-generation-status';
  intelligence.innerHTML='<span id="routeGenerationStatus" role="status" aria-live="polite">Preparing route analysis…</span><button id="regenerateGrowthRoutes" type="button">Regenerate routes</button>';
@@ -869,7 +869,8 @@ function plotIntelligentRoute(group,model,route,nodes,ns){
  const y0=Math.max(125,Math.min(170,startCircle?Number(startCircle.getAttribute('cy')):151));
  const routes=state.growthRouteCache?.routes||[route];
  const months=Math.max(1,...routes.map(r=>Number(r.steps?.at(-1)?.months_from_start)||1));
- const pts=window.ValidationRouteEngine?.layout(route,x0,y0,1550,months);
+ const sharedMax=window.ValidationRouteEngine?.sharedComparisonMax(route,routes);
+ const pts=window.ValidationRouteEngine?.layout(route,x0,y0,1550,months,sharedMax);
  if(!pts){console.warn('Invalid route coordinates',model.id);return}
  const path=document.createElementNS(ns,'path');
  path.setAttribute('class','reference-path named-route-path');
@@ -878,7 +879,7 @@ function plotIntelligentRoute(group,model,route,nodes,ns){
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- title.textContent=model.name+' · '+route.metric+' ('+route.metric_unit+'). Heights show progress toward the proposed target, and horizontal positions show months. Different units are not directly comparable.';
+ title.textContent=model.name+' · '+route.metric+' ('+route.metric_unit+'). Horizontal: months. Vertical: '+(sharedMax?'shared scale (0–'+sharedMax+' '+route.metric_unit+') for routes measuring the same metric':'percentage of this route target; other metric types are not directly comparable')+'. These are conditional goals, not observed growth.';
  path.appendChild(title);group.appendChild(path);
  steps.forEach((step,i)=>{
   const [x,y]=pts[i+1];
