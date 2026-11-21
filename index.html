@@ -688,6 +688,14 @@ function routeReadiness(steps,snapshot){
 function setupReferenceControls(){
  const chart=$('#planView .map-chart'),svg=chart?.querySelector('svg');
  if(!chart||!svg||!state.plan?.milestones?.length)return;
+ // One-time migration of document plans created before isolated venture identities
+ // were stored; do not keep the prior company's business-type dropdown or AI routes.
+ if(state.plan.fromDocument&&!state.plan.ventureIdentity&&!state.plan.contextMigrationDone){
+  state.plan.contextMigrationDone=true;
+  state.comparisonBusinessType=inferredBusinessType();
+  state.growthRouteCache=null;
+  save();
+ }
  if(!state.comparisonBusinessType)state.comparisonBusinessType=inferredBusinessType();
  if(!Array.isArray(state.comparisonCurves)){
   state.comparisonCurves=[...(businessPathDefaults[state.comparisonBusinessType]||['steady'])];
