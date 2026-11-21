@@ -251,8 +251,8 @@ const key='smallsteps-v1';const examples=[{id:'e1',title:'Had my first conversat
 function getContext(){const p=state.profile||{};return {name:p.name||'',description:p.description||'',ventureType:p.ventureType||'',stage:p.stage||'',ambition:p.ambition||'',horizon:p.horizon||''}}
 function planVentureContext(){
  const p=state.plan||{};
- if(p.fromDocument&&p.ventureIdentity){
-  const v=p.ventureIdentity;
+ if(p.fromDocument){
+  const v=p.ventureIdentity||{};
   return {name:String(v.name||''),description:String(v.description||p.summary||''),ventureType:String(v.ventureType||''),stage:String(v.stage||''),ambition:String(p.ambition||''),horizon:String(p.horizon||'')};
  }
  return getContext();
@@ -459,7 +459,7 @@ function routeSnapshot(){
  const plan=state.plan||{milestones:[]},milestones=plan.milestones||[];
  const descriptions=[planVentureContext().description,plan.summary,...milestones.map(m=>[m.title,m.target,m.evidence_gap,m.next_test,m.reported_evidence].join(' '))].join(' ').toLowerCase();
  const observations=milestones.map((m,i)=>{
-  const linked=(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title);
+  const linked=(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title));
   const entry=linked.sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
   const score=entry?entryRating(entry).score:null;
   const direction=entry?(score===null?'unclear':score<0?'negative':score===0?'mixed':'positive'):(m.reported_evidence?m.evidence_direction||'unclear':'none');
@@ -612,7 +612,7 @@ function hockeyStickRoadmap(snapshot){
 let routeRequestInFlight=null;
 function growthRouteSignature(){
  const plan=state.plan||{};
- return JSON.stringify({model:'milestone-targets-v2-time-objectives',business:state.comparisonBusinessType||inferredBusinessType(),context:assessmentContext(),ventureIdentity:plan.ventureIdentity||null,count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30))});
+ return JSON.stringify({model:'milestone-targets-v3-isolated-document',business:plan.fromDocument?inferredBusinessType():(state.comparisonBusinessType||inferredBusinessType()),context:assessmentContext(),ventureIdentity:plan.ventureIdentity||null,count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30))});
 }
 function tailoredRoute(id){
  const cache=state.growthRouteCache;
@@ -641,7 +641,7 @@ async function generateTailoredRoutes(force=false){
  const raw=state.plan.milestones.map(m=>({title:m.title,target:m.target||'',reported_evidence:m.reported_evidence||'',evidence:m.evidence||'',status:m.status||'Not started',linked_evidence:(state.plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title).map(e=>[e.title,e.note,e.category].filter(Boolean).join(' · '))).join('; ').slice(0,350)}));
  try{
   const response=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({
-   mode:'growth_routes',count:routeMilestoneCount(),context:{...assessmentContext(),ventureType:state.comparisonBusinessType||inferredBusinessType(),description:(planVentureContext().description||state.plan.summary||'').slice(0,800)},milestones:raw
+   mode:'growth_routes',count:routeMilestoneCount(),context:{...assessmentContext(),ventureType:state.plan.fromDocument?inferredBusinessType():(state.comparisonBusinessType||inferredBusinessType()),description:(planVentureContext().description||state.plan.summary||'').slice(0,800)},milestones:raw
   })});
   const result=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(result.error||'Route generation unavailable');
@@ -1318,7 +1318,7 @@ $('#toggleNavigator').onclick=()=>{
 function classifyJourneyStages(){
  const plan=state.plan,milestones=plan?.milestones||[];
  const observations=milestones.map((m,i)=>{
-  const linked=(state.entries||[]).some(e=>!e.demo&&e.linkedMilestone===m.title);
+  const linked=!plan.fromDocument&&(state.entries||[]).some(e=>!e.demo&&e.linkedMilestone===m.title);
   const reported=(linked||!!m.reported_evidence)&&milestoneRelevance(m).score>0;
   const title=[m.title,m.target,m.why].join(' ').toLowerCase();
   const foundation=/idea|initial research|founder|explor|discovery|brainstorm|concept|interview|research|planning|problem validation/.test(title);
