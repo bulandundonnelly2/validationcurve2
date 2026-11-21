@@ -84,3 +84,23 @@ test('Different units cannot be treated as comparable vertical scales',()=>{
  const a=createRoute('Biotechnology','long'),b=createRoute('Biotechnology','steady');
  assert.equal(engine.sharedComparisonMax(a,[a,b]),null);
 });
+
+test('Route quality assessment accepts measured, distinct signatures',()=>{
+ const profiles={
+  steady:{targets:[2,4,6,8,10],times:[1,2,3,4,5]},
+  hockey:{targets:[1,2,4,10,35],times:[1,3,6,9,12]},
+  s:{targets:[1,4,18,28,30],times:[1,3,6,9,12]},
+  steps:{targets:[0,8,8,35,35],times:[1,3,6,9,12]},
+  long:{targets:[1,2,4,6,9],times:[6,12,24,36,60]}
+ };
+ for(const [id,p] of Object.entries(profiles)){
+  const r={id,metric:id==='long'?'technical readiness':'paying customers',metric_type:id==='long'?'technical':'commercial',metric_baseline:0,steps:p.targets.map((v,i)=>({months_from_start:p.times[i],target_value:v}))};
+  assert.equal(engine.diagnoseRoute(r).matches,true,id);
+ }
+});
+test('Route name alone does not validate implausible shape',()=>{
+ const same={metric_baseline:0,metric:'paying customers',metric_type:'commercial',steps:[1,2,3,4,5].map((v,i)=>({target_value:v,months_from_start:i+1}))};
+ for(const id of ['hockey','s','steps']){
+  assert.equal(engine.diagnoseRoute({...same,id}).matches,false,id+' must reject flat linear trajectory');
+ }
+});
