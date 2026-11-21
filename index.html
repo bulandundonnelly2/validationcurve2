@@ -351,7 +351,7 @@ function setupReferenceControls(){
  const options=Object.keys(businessPathDefaults);
  toolbar.innerHTML='<span class="reference-intro">Explore routes</span><label>Business type <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">How to follow a route?</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
- explainer.textContent='The dotted paths now compare the recorded milestones from the beginning as hypothetical scenarios. Click a historical comparison point to review that milestone. Paths continuing to the right identify proposed next evidence. These are not measured sector benchmarks or forecasts.';
+ explainer.textContent='Each route now has a distinctive strategic shape: steady, hockey-stick, S-curve, step changes or long R&D. Coloured points describe what evidence would be needed at each stage. Shapes are illustrative, not company growth predictions or industry benchmarks.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
   state.comparisonBusinessType=e.target.value;
@@ -513,31 +513,46 @@ function drawReferenceCurves(){
  const models=referenceModels.filter(model=>selected.includes(model.id));
  models.forEach((model,routeIndex)=>{
   const routeStepsNow=routeSteps(model.id,snap);
-  const offset=routeIndex-(models.length-1)/2;
+  // Give every named strategy its own legible visual signature while retaining
+  // concrete checkpoints from the uploaded business plan and route requirements.
+  // These are schematic validation sequences, NOT revenue forecasts or industry averages.
+  const referenceStartX=reported[0]?.x??75;
+  const referenceEndX=780;
+  const routeOffsets={steady:0,hockey:12,s:-10,steps:22,long:30};
+  const firstY=reported[0]?.y??150;
+  const routeStartY=Math.max(122,Math.min(165,firstY+(routeOffsets[model.id]??0)));
+  const riseByRoute={steady:105,hockey:112,s:99,steps:105,long:109};
+  const rise=riseByRoute[model.id]??105;
+  const routeAt=x=>{
+   const t=Math.max(0,Math.min(1,(x-referenceStartX)/(referenceEndX-referenceStartX)));
+   return Math.max(24,Math.min(180,routeStartY-rise*Math.max(0,Math.min(1,model.formula(t)))));
+  };
   const historical=reported.map((o,index)=>{
    const expected=expectedRouteMilestone(model.id,index,reported.length);
-   // Separating route tracks is a visual aid, not a comparative performance calculation.
-   const y=Math.max(28,Math.min(169,(reported[0]?.y??150)-index*9+offset*14));
-   // Offset route checkpoints horizontally from actual milestone centres so both remain clickable.
+   // Nudge checkpoint right of the actual milestone so both can be selected.
    const x=o.x+16;
-   return {...o,x,y,expected,actualX:o.x,actualY:o.y};
+   return {...o,x,y:routeAt(x),expected,actualX:o.x,actualY:o.y};
   });
-  const pastEnd=historical[historical.length-1];
-  const futureStartY=pastEnd?.y??anchorY;
-  const startX=anchorX+34,endX=780;
+  const futureStartX=Math.max(anchorX+36,(historical.at(-1)?.x??referenceStartX)+23);
   const future=routeStepsNow.map((step,index)=>{
-   const t=(index+1)/routeStepsNow.length;
-   return {x:startX+(endX-startX)*t,y:Math.max(25,Math.min(175,futureStartY-(index+1)*12+Math.max(0,step.difficulty-3)*5)),step,index};
+   const x=futureStartX+(referenceEndX-futureStartX)*(index+1)/Math.max(1,routeStepsNow.length);
+   return {x,y:routeAt(x),step,index};
   });
-  // A single connected route path: expected historical validation -> required next evidence.
-  const pts=[...historical.map(o=>[o.x,o.y]),...future.map(p=>[p.x,p.y])];
-  if(pts.length>1){
-   const path=document.createElementNS(ns,'path');path.setAttribute('class','reference-path');
-   path.setAttribute('stroke',model.color);path.setAttribute('stroke-width','2.5');
-   path.setAttribute('d',pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '));
-   const label=document.createElementNS(ns,'title');label.textContent=model.name+' — expected validation milestones and next tests (illustrative strategy, not benchmark)';
-   path.appendChild(label);group.appendChild(path);
-  }
+  // Sample each actual profile continuously. Step changes deliberately forms plateaus;
+  // hockey stick accelerates late; the S-curve rises sharply in the middle.
+  const profilePoints=Array.from({length:101},(_,i)=>{
+   const x=referenceStartX+(referenceEndX-referenceStartX)*i/100;
+   return [x,routeAt(x)];
+  });
+  const path=document.createElementNS(ns,'path');
+  path.setAttribute('class','reference-path named-route-path');
+  path.setAttribute('data-route-shape',model.id);
+  path.setAttribute('stroke',model.color);
+  path.setAttribute('stroke-width','3');
+  path.setAttribute('d',profilePoints.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '));
+  const label=document.createElementNS(ns,'title');
+  label.textContent=model.name+' schematic trajectory with milestones specific to this business. Shape illustrates strategy, not a forecast.';
+  path.appendChild(label);group.appendChild(path);
   historical.forEach(o=>{
    const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
    marker.setAttribute('aria-label',model.name+' at '+o.milestone.title+': expected '+o.expected.title);
