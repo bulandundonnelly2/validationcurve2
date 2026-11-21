@@ -373,11 +373,67 @@ const routeMilestoneTracks={
   ['Demonstrate commercial feasibility','Pilot economics, compliance and practical deployment evidence']
  ]
 };
+function routeBusinessContext(){
+ const p=state.plan||{};
+ const words=[p.summary,getContext().description,getContext().ventureType,...(p.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence_gap].join(' '))].join(' ').toLowerCase();
+ const type=state.comparisonBusinessType||inferredBusinessType();
+ if(/caf[eé]|container|washing|packag|return|restaurant/.test(words))return {sector:'café / reusable-container venture',actor:'café',product:'returnable container system',unit:'café locations',customer:'café owners and their customers',action:'returns and washing workflow',metric:'return completion, repeat use and processing cost'};
+ if(/school|student|education|teacher|edtech|learning/.test(words))return {sector:'education venture',actor:'school',product:'learning solution',unit:'schools',customer:'teachers and students',action:'classroom onboarding',metric:'engagement, learning outcomes and renewals'};
+ if(/hospital|clinic|patient|medtech|healthcare/.test(words))return {sector:'healthcare venture',actor:'clinic',product:'clinical solution',unit:'clinics',customer:'clinicians and patients',action:'clinical workflow',metric:'adoption, outcomes and implementation cost'};
+ if(/agency|consult|service|studio/.test(words)||type==='Agency / Services')return {sector:'service business',actor:'client',product:'service offer',unit:'clients',customer:'target clients',action:'service delivery',metric:'paid conversion, repeat business and delivery margin'};
+ if(/saas|software|app|platform|subscription/.test(words)||type==='Software / SaaS')return {sector:'software venture',actor:'customer',product:'software platform',unit:'customer accounts',customer:'target users',action:'onboarding and activation',metric:'activation, retention, conversion and acquisition cost'};
+ if(/manufactur|hardware|device|engineering/.test(words)||type==='Hardware / Manufacturing')return {sector:'hardware venture',actor:'industry partner',product:'physical product',unit:'partner sites',customer:'buyers and operators',action:'installation and maintenance',metric:'field reliability, unit cost and repeat orders'};
+ if(/retail|shop|consumer|food|ecommerce/.test(words)||type==='Consumer / Retail')return {sector:'consumer business',actor:'retailer',product:'consumer product',unit:'retail locations',customer:'customers and retailers',action:'purchasing and fulfilment',metric:'conversion, repeat purchases and margin'};
+ return {sector:'this venture',actor:'customer',product:'proposed offering',unit:'customer groups',customer:'target customers',action:'product use',metric:'repeat demand, cost and outcomes'};
+}
 function expectedRouteMilestone(id,sequenceIndex,total){
  const track=routeMilestoneTracks[id]||routeMilestoneTracks.steady;
  const slot=total<=1?0:Math.min(track.length-1,Math.round(sequenceIndex*(track.length-1)/Math.max(1,total-1)));
- const [title,evidence]=track[slot];
- return {title,evidence,slot};
+ const [baseTitle,baseEvidence]=track[slot];
+ const c=routeBusinessContext();
+ const difficultyByRoute={steady:[1,2,3,3,4],hockey:[2,3,4,5,5],s:[2,2,3,4,4],steps:[1,3,4,4,5],long:[3,3,4,5,5]};
+ const difficult=(difficultyByRoute[id]||difficultyByRoute.steady)[slot];
+ const ambition=Math.max(0,Math.min(3,Number(state.validationAmbition)||0));
+ const scale=ambition>=3&&slot>1?1:0;
+ const difficulty=Math.min(5,difficult+scale);
+ const examples={
+ steady:[
+  'Interview 10 '+c.customer+' to establish what problem matters enough to solve.',
+  'Observe 5 real users trying the '+c.product+'; document barriers in '+c.action+'.',
+  'Secure payment from at least 2 independent '+c.actor+' customers rather than relying on interest.',
+  'Record repeat use or renewal at 3 '+c.unit+' over a defined trial period.',
+  'Calculate actual revenue, costs and margin for the '+c.product+' across 3 '+c.unit+'.'
+ ],
+ hockey:[
+  'Identify a repeatable buyer segment for the '+c.product+' and quantify potential reachable demand.',
+  'Run the same onboarding test with two groups of '+c.customer+'; track activation.',
+  'Test one customer-acquisition channel and record spend, conversions and paid customers.',
+  'Demonstrate '+c.metric+' across multiple '+c.unit+' without a drop in service quality.',
+  'Repeat customer growth through a second acquisition channel and compare unit economics.'
+ ],
+ s:[
+  'Define a narrow early-adopter group among '+c.customer+' and test their unmet needs.',
+  'Pilot the '+c.product+' with a small group and measure real use rather than stated interest.',
+  'Track usage and dropout over several weeks for the '+c.product+'.',
+  'Run a second pilot in different '+c.unit+' and compare adoption.',
+  'Measure which '+c.action+' barriers prevent further adoption and test fixes.'
+ ],
+ steps:[
+  'Validate the biggest commercial problem through direct interviews with '+c.customer+'.',
+  'Run a measurable pilot of the '+c.product+' with defined pass/fail criteria.',
+  'Secure a signed commitment from one '+c.actor+' to test the solution at meaningful scale.',
+  'Repeat that result independently at another '+c.actor+' site.',
+  'Show the funding, capacity or operational readiness needed to move into the next stage.'
+ ],
+ long:[
+  'Define measurable technical requirements for the '+c.product+'.',
+  'Build and record a proof-of-concept test for the '+c.product+'.',
+  'Independently reproduce the core technical result with documented test data.',
+  'Evaluate the system with a '+c.actor+' under actual '+c.action+' conditions.',
+  'Demonstrate feasible delivery economics and any relevant compliance requirements.'
+ ]
+ };
+ return {title:baseTitle,evidence:baseEvidence,example:examples[id]?.[slot]||('Test the '+c.product+' with '+c.customer+'.'),difficulty,value:Math.min(5,slot+2),sector:c.sector,slot};
 }
 function compareExpectedWithActual(expected,actual){
  const text=[actual.title,actual.target,actual.reported_evidence,actual.evidence].filter(Boolean).join(' ').toLowerCase();
@@ -446,7 +502,7 @@ function drawReferenceCurves(){
    marker.style.cursor='pointer';
    const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',o.x);dot.setAttribute('cy',o.y);
    dot.setAttribute('r','5.5');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#16382c');dot.setAttribute('stroke-width','1.4');
-   const tt=document.createElementNS(ns,'title');tt.textContent='If following '+model.name+', milestone '+(o.i+1)+' should validate: '+o.expected.title+'. Required: '+o.expected.evidence;
+   const tt=document.createElementNS(ns,'title');tt.textContent='On '+model.name+': '+o.expected.example+' | Difficulty '+o.expected.difficulty+'/5. Evidence: '+o.expected.evidence;
    marker.append(dot,tt);
    marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
    marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
@@ -487,9 +543,17 @@ function openHistoricalComparison(id,milestoneIndex){
  const panel=$('#navigatorPanel');
  panel.querySelector('.history-comparison')?.remove();
  const section=document.createElement('div');section.className='navigator-card history-comparison';
- section.innerHTML='<div class="navigator-sub">IF FOLLOWING '+esc(model.name.toUpperCase())+'</div><h4>Expected milestone: '+esc(expected.title)+'</h4><p><b>Required evidence:</b> '+esc(expected.evidence)+'</p><div class="navigator-sub">YOUR ACTUAL MILESTONE</div><p><b>'+esc(actual.title)+'</b></p><p>'+esc(compareExpectedWithActual(expected,actual))+'</p><p>These are suggested route checkpoints, not sector norms or proof of success. Evidence must be reviewed before a route milestone is marked validated.</p><button type="button" id="historyRouteActions">Explore next route tests</button>';
+ section.innerHTML='<div class="navigator-sub">ALTERNATIVE PATH · '+esc(model.name.toUpperCase())+'</div><p style="font-size:11px">Tailored example for '+esc(expected.sector)+'</p><h4>'+esc(expected.title)+'</h4><p><b>What you could do:</b> '+esc(expected.example)+'</p><div class="navigator-tags"><span>Difficulty '+expected.difficulty+'/5</span><span>Potential value '+expected.value+'/5</span><span>Not yet achieved</span></div><p><b>Evidence required:</b> '+esc(expected.evidence)+'</p><div class="navigator-sub">COMPARE WITH YOUR OWN MILESTONE</div><p><b>'+esc(actual.title)+'</b></p><p>'+esc(compareExpectedWithActual(expected,actual))+'</p><p>This is a proposed alternative activity, not a milestone extracted from your business plan or an independently validated benchmark.</p><button type="button" id="addHistoricalAlternative">＋ Add alternative milestone</button> <button type="button" id="historyRouteActions">Explore next route tests</button>';
  const card=panel.querySelector('.navigator-card');if(card)card.after(section);else panel.appendChild(section);
  section.querySelector('#historyRouteActions').onclick=()=>openRouteGuidance(id,0);
+ section.querySelector('#addHistoricalAlternative').onclick=()=>{
+  const plan=state.plan;
+  if(!plan||plan.milestones.length>=20){alert('The curve supports up to 20 milestones.');return}
+  const title=expected.title+' — '+model.name;
+  if(plan.milestones.some(m=>m.title===title)){alert('This milestone is already on your plan.');return}
+  plan.milestones.push({title,target:expected.example,why:'Alternative strategy: '+model.name,evidence:expected.evidence,status:'Not started',timeframe:'To be planned',source:'alternative-route',estimated_difficulty:expected.difficulty});
+  save();renderPlan();
+ };
 }
 
 function openRouteGuidance(id,index){
