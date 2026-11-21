@@ -187,7 +187,7 @@ function setupReferenceControls(){
  toolbar.innerHTML='<span class="reference-intro">Compare paths</span><label>Business type <select id="referenceBusinessType" aria-label="Business type for suggested comparison curves">'+choices.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━━</span>'+model.name+'</label>').join('')+'<button class="reference-help" type="button" id="referenceHelp" aria-expanded="false">What do these mean?</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
  explainer.textContent='These are hypothetical trajectory shapes, not measured sector averages or financial growth forecasts. They share a visual scale only; comparison does not imply the venture should match them. Your documented evidence remains separate.';
- chart.before(toolbar);toolbar.after(explainer);
+ const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
   state.comparisonBusinessType=e.target.value;
   state.comparisonCurves=[...(businessPathDefaults[e.target.value]||['steady','hockey'])];
