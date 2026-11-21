@@ -87,37 +87,40 @@ async function generateGrowthRoutes(req,res){
   };
   const model='gemini-2.5-flash';
   async function requestOneRoute(id){
-   const perRouteInstructions=instructions+'\nGenerate ONLY the '+id+' route, not all five. Output JSON containing exactly one field: route. Its route.id must equal '+id+'. Include a recommendation_priority 0–5, indicating fit with the founder goals and evidence. Different routes must follow their own mechanisms, not a prescribed shape. Keep text focused and short enough to finish. A low-priority route is still allowed.';
-   const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
-    method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
-    body:JSON.stringify({
-     systemInstruction:{parts:[{text:perRouteInstructions}]},
-     contents:[{role:'user',parts:[{text:JSON.stringify({venture:c,milestones,requested_count:count,route_id:id})}]}],
-     generationConfig:{responseMimeType:'application/json',responseJsonSchema:schemaForRoute,maxOutputTokens:7200,thinkingConfig:{thinkingBudget:0}}
-    }),
-    signal:AbortSignal.timeout(46000)
-   });
-   if(!response.ok){
-    let reason='';
-    try{const data=await response.json();reason=String(data.error?.message||'').slice(0,300)}catch{}
-    console.error('growth_route_model_http_error',{route:id,status:response.status,reason});
-    const label=response.status===429?'Gemini rate limit':response.status===403?'Gemini key or API permission':response.status===400?'Gemini request schema':response.status>=500?'Gemini service unavailable':'Gemini API error';
-    throw Object.assign(new Error(label+' ('+response.status+')'),{code:'MODEL_'+response.status});
+   let critique='';
+   for(let attempt=0;attempt<2;attempt++){
+    const perRouteInstructions=instructions+'\nGenerate ONLY the '+id+' route, not all five. Output JSON containing exactly one field: route. route.id MUST equal '+id+'. Include recommendation_priority 0–5. Keep content concise, specific, and realistic.'+(critique?'\nPREVIOUS RESPONSE REJECTED: '+critique+'. Rewrite the entire route with measurable venture-specific steps, no generic phases.':'');
+    const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
+     method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
+     body:JSON.stringify({
+      systemInstruction:{parts:[{text:perRouteInstructions}]},
+      contents:[{role:'user',parts:[{text:JSON.stringify({venture:c,milestones,requested_count:count,route_id:id})}]}],
+      generationConfig:{responseMimeType:'application/json',responseJsonSchema:schemaForRoute,maxOutputTokens:7200,thinkingConfig:{thinkingBudget:0}}
+     }),
+     signal:AbortSignal.timeout(46000)
+    });
+    if(!response.ok){
+     let reason='';
+     try{const data=await response.json();reason=String(data.error?.message||'').slice(0,300)}catch{}
+     console.error('growth_route_model_http_error',{route:id,status:response.status,reason});
+     const label=response.status===429?'Gemini rate limit':response.status===403?'Gemini key or API permission':response.status===400?'Gemini request schema':response.status>=500?'Gemini service unavailable':'Gemini API error';
+     throw Object.assign(new Error(label+' ('+response.status+')'),{code:'MODEL_'+response.status});
+    }
+    const data=await response.json(),candidate=data.candidates?.[0];
+    const output=candidate?.content?.parts?.map(p=>p.text||'').join('')||'';
+    if(!output)throw new Error('Gemini returned an empty response for '+id);
+    let parsedOne;
+    try{parsedOne=JSON.parse(output)}catch{
+     console.error('growth_route_incomplete_json',{route:id,finishReason:candidate?.finishReason||'unknown',length:output.length});
+     throw new Error('Gemini returned incomplete JSON for '+id);
+    }
+    if(!parsedOne.route||parsedOne.route.id!==id)throw new Error('Gemini returned incorrect route '+id);
+    const grounding=assessRouteSpecificity(parsedOne.route,c,milestones);
+    if(grounding.ok)return parsedOne.route;
+    critique=grounding.reason;
+    console.warn('growth_route_specificity_retry',{route:id,attempt:attempt+1,reason:critique});
    }
-   const data=await response.json();
-   const candidate=data.candidates?.[0];
-   const output=candidate?.content?.parts?.map(p=>p.text||'').join('')||'';
-   if(!output){
-    console.error('growth_route_empty_model_output',{route:id,finishReason:candidate?.finishReason||'unknown'});
-    throw new Error('Gemini returned an empty response for '+id);
-   }
-   let parsedOne;
-   try{parsedOne=JSON.parse(output)}catch{
-    console.error('growth_route_incomplete_json',{route:id,finishReason:candidate?.finishReason||'unknown',length:output.length});
-    throw new Error('Gemini returned incomplete JSON for '+id);
-   }
-   if(!parsedOne.route||parsedOne.route.id!==id)throw new Error('Gemini returned incorrect route '+id);
-   return parsedOne.route;
+   throw new Error('Generated '+id+' milestones were too generic to use');
   }
   const generated=await Promise.allSettled(ids.map(id=>requestOneRoute(id)));
   const failed=generated.find(x=>x.status==='rejected');
