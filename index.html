@@ -291,7 +291,7 @@ function suggestedFor(plan,ambition){
 
 const referenceModels=[
  {id:'steady',name:'Steady growth',color:'#80d5e4',info:'Gradual consistent progress, often a useful comparison for service businesses and established operations.',formula:t=>t},
- {id:'hockey',name:'Hockey stick',color:'#ffb45b',info:'Limited initial traction followed by a sharp acceleration; an aspirational shape, not a startup success forecast.',formula:t=>t<.58?.16*t/.58:.16+.84*Math.pow((t-.58)/.42,2.1)},
+ {id:'hockey',name:'Hockey stick',color:'#ffb45b',info:'Long, almost flat validation groundwork followed by a distinct sharp upward turn once repeatable growth is evidenced. An illustrative strategy, not a forecast.',formula:t=>t<=.70?.035*(t/.70):.035+.965*Math.pow((t-.70)/.30,1.04)},
  {id:'s',name:'S-curve',color:'#d9a5f0',info:'Slow adoption, a rapid expansion phase, then a plateau as a market matures.',formula:t=>(1/(1+Math.exp(-10*(t-.5)))-1/(1+Math.exp(5)))/(1/(1+Math.exp(-5))-1/(1+Math.exp(5)))},
  {id:'steps',name:'Step changes',color:'#e7d47a',info:'Periods of little measurable progress interrupted by major validation or contract milestones.',formula:t=>t<.23?.1*t/.23:t<.48?.24:t<.72?.50:t<.89?.74:1},
  {id:'long',name:'Long R&D',color:'#9ecc98',info:'Prolonged feasibility and development followed by later commercial validation; relevant to some hardware and deep-tech ventures.',formula:t=>t<.58?.15*t/.58:.15+.85*Math.pow((t-.58)/.42,1.35)}
@@ -656,7 +656,7 @@ function drawReferenceCurves(){
   const routeOffsets={steady:0,hockey:12,s:-10,steps:22,long:30};
   const firstY=reported[0]?.y??150;
   const routeStartY=Math.max(122,Math.min(165,firstY+(routeOffsets[model.id]??0)));
-  const riseByRoute={steady:105,hockey:112,s:99,steps:105,long:109};
+  const riseByRoute={steady:105,hockey:130,s:99,steps:105,long:109};
   const rise=riseByRoute[model.id]??105;
   const routeAt=x=>{
    const t=Math.max(0,Math.min(1,(x-referenceStartX)/(referenceEndX-referenceStartX)));
