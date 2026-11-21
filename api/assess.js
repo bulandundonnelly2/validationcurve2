@@ -3,6 +3,7 @@ module.exports = async function handler(req, res) {
   if (process.env.GEMINI_ASSESSMENT_ENABLED !== 'true') return res.status(503).json({ error: 'AI assessment is not enabled yet.' });
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (req.body?.mode === 'plan') return proposePlan(req, res);
+  if (req.body?.mode === 'milestone_value') return assessMilestoneValue(req, res);
   const { title, note, date = '' } = req.body || {};
   const context = readContext(req.body?.context);
   const milestones = readMilestones(req.body?.milestones);
@@ -26,6 +27,37 @@ Choose the score as a provisional estimate of this specific event's direction an
 };
 
 
+
+
+async function assessMilestoneValue(req,res){
+ const {title,details='',evidence='',progress='planned'}=req.body||{};
+ const context=readContext(req.body?.context);
+ if(!context||typeof title!=='string'||title.length>200||!title.trim()||typeof details!=='string'||details.length>1400||typeof evidence!=='string'||evidence.length>800||!['planned','reported'].includes(progress))
+  return res.status(400).json({error:'Please enter a valid milestone and venture description.'});
+ if(!process.env.GEMINI_API_KEY)return res.status(503).json({error:'AI assessment is not configured.'});
+ const schema={type:'object',properties:{
+  relevance:{type:'integer',minimum:0,maximum:5},
+  potential_value:{type:'integer',minimum:0,maximum:5},
+  difficulty:{type:'integer',minimum:1,maximum:5},
+  explanation:{type:'string'},
+  evidence_needed:{type:'string'},
+  category:{type:'string',enum:['personal','preparation','product','customer','commercial','funding','operations','research','other']}
+ },required:['relevance','potential_value','difficulty','explanation','evidence_needed','category'],additionalProperties:false};
+ const guidance='Assess ONE milestone relative to the venture, aims and stage. Separate relevance, potential strategic significance, difficulty of ACHIEVING it, and evidence of actual completion. Score POTENTIAL VALUE even when only planned. Receiving £100 million investment may have exceptional potential business significance and very high difficulty, but is not achieved if only planned, and financing is not proof of customer demand. Personal observations such as seeing a snowman or having a beer without business outcomes must score zero relevance and zero value. Score relevance and potential value from 0 (none) to 5 (exceptional), difficulty 1 (easy) to 5 (exceptionally difficult). Give brief specific rationale and evidence required. Do not fabricate achievements or assume proposed targets are completed. Missing evidence lowers confidence, not the strategic importance of the goal.';
+ try{
+ const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',{
+  method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
+  body:JSON.stringify({systemInstruction:{parts:[{text:guidance}]},contents:[{role:'user',parts:[{text:JSON.stringify({business:context,milestone:{title,details,evidence,progress}})}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:schema,maxOutputTokens:850,thinkingConfig:{thinkingBudget:0}}}),
+  signal:AbortSignal.timeout(18000)
+ });
+ if(!response.ok)return res.status(502).json({error:'Milestone AI evaluation temporarily unavailable.'});
+ const data=await response.json(),result=JSON.parse(data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'');
+ if(!['relevance','potential_value','difficulty'].every(k=>Number.isInteger(result[k]))||result.relevance<0||result.relevance>5||result.potential_value<0||result.potential_value>5||result.difficulty<1||result.difficulty>5||typeof result.explanation!=='string'||typeof result.evidence_needed!=='string')throw Error('Invalid AI output');
+ result.potential_value=result.relevance===0?0:Math.min(result.potential_value,5);
+ result.explanation=result.explanation.slice(0,500);result.evidence_needed=result.evidence_needed.slice(0,400);
+ return res.status(200).json(result);
+ }catch(error){console.error('milestone_value_assessment_failed',error.name||'error');return res.status(502).json({error:'Milestone evaluation temporarily unavailable.'})}
+}
 
 async function proposePlan(req,res) {
   const {name = '', file = '', ambitions, horizon} = req.body;
