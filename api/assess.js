@@ -52,14 +52,66 @@ async function generateGrowthRoutes(req,res){
   'Do not generate generic, duplicated milestones or identical growth profiles. Targets must make the strategic differences visible, but never invent achieved evidence or claim verified forecasting. Return JSON only.'
  ].join('\n');
  try{
-  const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',{
-   method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
-   body:JSON.stringify({systemInstruction:{parts:[{text:instructions}]},contents:[{role:'user',parts:[{text:JSON.stringify({venture:c,milestones,requested_count:count})}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:schema,maxOutputTokens:12500,thinkingConfig:{thinkingBudget:0}}}),
-   signal:AbortSignal.timeout(55000)
-  });
-  if(!response.ok)return res.status(502).json({error:'AI route generation unavailable.'});
-  const data=await response.json(),parsed=JSON.parse(data.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'');
-  if(!Array.isArray(parsed.routes)||parsed.routes.length!==5||!ids.includes(parsed.recommended_route))throw Error('Missing routes or recommendation');
+  // The old single request demanded as many as fifty detailed milestones,
+  // frequently exhausting the model's output limit or the function timeout.
+  // Request five independent, smaller route plans concurrently instead.
+  const schemaForRoute={
+   type:'object',
+   properties:{route:{type:'object',properties:{
+    ...routeProps,
+    recommendation_priority:{type:'integer',minimum:0,maximum:5}
+   },required:[...Object.keys(routeProps),'recommendation_priority'],additionalProperties:false}},
+   required:['route'],additionalProperties:false
+  };
+  const model='gemini-2.5-flash';
+  async function requestOneRoute(id){
+   const perRouteInstructions=instructions+'\nGenerate ONLY the '+id+' route, not all five. Output JSON containing exactly one field: route. Its route.id must equal '+id+'. Include a recommendation_priority 0–5, indicating fit with the founder goals and evidence. Different routes must follow their own mechanisms, not a prescribed shape. Keep text focused and short enough to finish. A low-priority route is still allowed.';
+   const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
+    method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
+    body:JSON.stringify({
+     systemInstruction:{parts:[{text:perRouteInstructions}]},
+     contents:[{role:'user',parts:[{text:JSON.stringify({venture:c,milestones,requested_count:count,route_id:id})}]}],
+     generationConfig:{responseMimeType:'application/json',responseJsonSchema:schemaForRoute,maxOutputTokens:7200,thinkingConfig:{thinkingBudget:0}}
+    }),
+    signal:AbortSignal.timeout(46000)
+   });
+   if(!response.ok){
+    let reason='';
+    try{const data=await response.json();reason=String(data.error?.message||'').slice(0,300)}catch{}
+    console.error('growth_route_model_http_error',{route:id,status:response.status,reason});
+    const label=response.status===429?'Gemini rate limit':response.status===403?'Gemini key or API permission':response.status===400?'Gemini request schema':response.status>=500?'Gemini service unavailable':'Gemini API error';
+    throw Object.assign(new Error(label+' ('+response.status+')'),{code:'MODEL_'+response.status});
+   }
+   const data=await response.json();
+   const candidate=data.candidates?.[0];
+   const output=candidate?.content?.parts?.map(p=>p.text||'').join('')||'';
+   if(!output){
+    console.error('growth_route_empty_model_output',{route:id,finishReason:candidate?.finishReason||'unknown'});
+    throw new Error('Gemini returned an empty response for '+id);
+   }
+   let parsedOne;
+   try{parsedOne=JSON.parse(output)}catch{
+    console.error('growth_route_incomplete_json',{route:id,finishReason:candidate?.finishReason||'unknown',length:output.length});
+    throw new Error('Gemini returned incomplete JSON for '+id);
+   }
+   if(!parsedOne.route||parsedOne.route.id!==id)throw new Error('Gemini returned incorrect route '+id);
+   return parsedOne.route;
+  }
+  const generated=await Promise.allSettled(ids.map(id=>requestOneRoute(id)));
+  const failed=generated.find(x=>x.status==='rejected');
+  if(failed){
+   const message=String(failed.reason?.message||'Gemini route generation failed').slice(0,160);
+   console.error('growth_routes_generation_failed',{message,failed:generated.filter(x=>x.status==='rejected').length});
+   return res.status(502).json({error:'AI route generation failed: '+message+'. Retry or reduce the number of milestones.'});
+  }
+  const generatedRoutes=generated.map(x=>x.value);
+  const ranked=[...generatedRoutes].sort((a,b)=>
+   Number(b.recommendation_priority||0)-Number(a.recommendation_priority||0));
+  const parsed={
+   routes:generatedRoutes,
+   recommended_route:ranked[0].id,
+   recommendation_reason:'Recommended based on the fit with the entrepreneur objectives and venture evidence: '+String(ranked[0].objectives_fit||ranked[0].suitability_reason||'').slice(0,500)
+  };
   const routes=[];
   for(const id of ids){
    const route=parsed.routes.find(r=>r.id===id);
@@ -79,7 +131,11 @@ async function generateGrowthRoutes(req,res){
    routes.push({id,suitability:route.suitability,suitability_reason:String(route.suitability_reason).slice(0,600),changes_needed:String(route.changes_needed).slice(0,600),metric:String(route.metric).slice(0,110),metric_unit:String(route.metric_unit).slice(0,55),metric_type:route.metric_type,objectives_fit:String(route.objectives_fit).slice(0,450),primary_risk:String(route.primary_risk).slice(0,450),metric_baseline:Number(route.metric_baseline),metric_baseline_source:String(route.metric_baseline_source).slice(0,100),strategy:String(route.strategy).slice(0,550),steps,caveat:String(route.caveat).slice(0,350)});
   }
   return res.status(200).json({routes,recommended_route:parsed.recommended_route,recommendation_reason:String(parsed.recommendation_reason).slice(0,700),source:'AI-generated planning hypotheses; not evidence or a calibrated forecast'});
- }catch(e){console.error('growth_routes_generation_failed',e?.name||'error');return res.status(502).json({error:'Could not generate valid growth routes. Please retry.'});}
+ }catch(e){
+  const message=e?.name==='TimeoutError'?'Gemini timed out':String(e?.message||'Unexpected error').slice(0,160);
+  console.error('growth_routes_generation_exception',{name:e?.name||'error',message});
+  return res.status(502).json({error:'AI route generation failed: '+message+'. Please retry.'});
+ }
 }
 async function assessMilestoneValue(req,res){
  const {title,details='',evidence='',progress='planned'}=req.body||{};
