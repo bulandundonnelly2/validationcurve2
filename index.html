@@ -566,7 +566,7 @@ function setupReferenceControls(){
  const options=Object.keys(businessPathDefaults);
  toolbar.innerHTML='<span class="reference-intro">Routes</span><label>Business <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<label class="route-count-label">Future milestones <select id="routeMilestoneCount" aria-label="Number of future milestones on each route">'+[3,4,5,6,7,8,9,10].map(n=>'<option value="'+n+'"'+(n===routeMilestoneCount()?' selected':'')+'>'+n+'</option>').join('')+'</select></label><button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">About routes</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
- explainer.textContent='Each coloured checkpoint is a possible milestone. The route rises only under the assumption that its required evidence is achieved. Growth profiles distribute those conditional gains differently; they are not verified achievements or financial forecasts.';
+ explainer.textContent='Routes begin at your latest reported milestone. Each future point represents a distinct achievement and rises only if its required evidence is demonstrated. Dashed paths are hypothetical, not achieved results or financial forecasts.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
   state.comparisonBusinessType=e.target.value;
@@ -777,50 +777,32 @@ function drawReferenceCurves(){
  const models=referenceModels.filter(model=>selected.includes(model.id));
  models.forEach((model,routeIndex)=>{
   const routeStepsNow=selectRouteMilestones(model.id,snap);
-  // Keep the real milestones in fixed positions. This alternative route is
-  // hypothetical: each step's vertical gain represents evidence that would
-  // be created IF the required milestone were independently demonstrated.
-  const referenceStartX=reported[0]?.x??75;
+  // Draw future routes only from the most recent reported outcome, not from
+  // the beginning of the venture. Historical comparisons remain available
+  // through existing milestone evidence; they must not consume future height.
   const referenceEndX=1550;
-  const routeOffsets={steady:-12,hockey:14,s:-3,steps:8,long:20};
-  const firstY=reported[0]?.y??150;
-  const routeStartY=Math.max(121,Math.min(172,firstY+(routeOffsets[model.id]??0)));
-  const historical=reported.map((o,index)=>{
-   const expected=expectedRouteMilestone(model.id,index,reported.length);
-   return {...o,x:o.x+16,expected,actualX:o.x,actualY:o.y};
-  });
-  const futureStartX=Math.max(anchorX+36,(historical.at(-1)?.x??referenceStartX)+23);
+  const futureStartX=Math.max(anchorX+22,82);
+  const routeOffsets={steady:-10,hockey:12,s:-2,steps:5,long:18};
+  const routeStartY=Math.max(120,Math.min(173,anchorY+(routeOffsets[model.id]||0)));
   const future=routeStepsNow.map((step,index)=>{
-   const x=futureStartX+(referenceEndX-futureStartX)*(index+1)/Math.max(1,routeStepsNow.length);
+   const x=futureStartX+(referenceEndX-futureStartX)*(index+1)/routeStepsNow.length;
    return {x,step,index};
   });
-  const heights=routeAchievedLevels(model.id,historical,future,routeStartY);
-  historical.forEach((h,i)=>h.y=heights[i]);
-  future.forEach((f,i)=>f.y=heights[historical.length+i]);
-  const pathPoints=[[referenceStartX,routeStartY],...historical.map(h=>[h.x,h.y]),...future.map(f=>[f.x,f.y])];
+  // All vertical headroom is assigned to requested FUTURE checkpoints. Each
+  // checkpoint is a conditional achievement, not a prediction or actual result.
+  const heights=routeAchievedLevels(model.id,[],future,routeStartY);
+  future.forEach((f,i)=>f.y=heights[i]);
+  const pathPoints=[[anchorX,routeStartY],...future.map(f=>[f.x,f.y])];
   const path=document.createElementNS(ns,'path');
   path.setAttribute('class','reference-path named-route-path');
   path.setAttribute('data-route-shape',model.id);
   path.setAttribute('stroke',model.color);
   path.setAttribute('stroke-width','3');
+  path.setAttribute('stroke-dasharray','5 5');
   path.setAttribute('d',joinedRoutePath(pathPoints,model.id));
   const label=document.createElementNS(ns,'title');
-  label.textContent=model.name+': '+routeStepsNow.length+' conditional validation checkpoints. Each rise requires achieving the named milestone; none of the future results is assumed or verified.';
+  label.textContent=model.name+': from your last evidenced milestone through '+future.length+' distinct future achievements, if their required evidence is demonstrated. These are hypotheses, not achieved results.';
   path.appendChild(label);group.appendChild(path);
-  historical.forEach(o=>{
-   const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
-   marker.setAttribute('aria-label',model.name+' at '+o.milestone.title+': expected '+o.expected.title);
-   marker.style.cursor='pointer';
-   const hit=document.createElementNS(ns,'circle');hit.setAttribute('cx',o.x);hit.setAttribute('cy',o.y);
-   hit.setAttribute('r','11');hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
-   const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',o.x);dot.setAttribute('cy',o.y);
-   dot.setAttribute('r','5.5');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#16382c');dot.setAttribute('stroke-width','1.4');
-   const tt=document.createElementNS(ns,'title');tt.textContent='IF ACHIEVED on '+model.name+': '+o.expected.example+' | Difficulty '+o.expected.difficulty+'/5. Required evidence: '+o.expected.evidence;
-   marker.append(hit,dot,tt);
-   marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
-   marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
-   group.appendChild(marker);
-  });
   future.forEach(({x,y,step,index})=>{
    const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
    marker.setAttribute('aria-label',model.name+' future test '+step.title);marker.style.cursor='pointer';
