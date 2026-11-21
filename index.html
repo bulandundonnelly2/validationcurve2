@@ -257,21 +257,26 @@ const ambitionProfiles=[
 // Read the entered event, then use the AI rationale to rule out clearly irrelevant events.
 // Never search the AI rationale for traction keywords: it may mention them only to say they are absent.
 function milestoneRelevance(m){
- const event=[m.title,m.target,m.reported_evidence].filter(Boolean).join(' ').toLowerCase();
- const explanation=String(m.why||'').toLowerCase();
- // First distinguish a directly relevant result from a personal anecdote. Do NOT
- // search the AI explanation for positive keywords: it often says "no customer value".
- const genuineOutcome=/\b(?:signed|secured|paid|paying|contract(?:ed|s)?|invoic(?:e|ed)|revenue|sales|customers?|caf[eé]s?|prototype|pilot|trial|tested|user sign[\s-]?ups?|registrations?|users?|retention|research|validated|launched|business partners?)\b/i;
- const personalActivity=/\b(?:beer|beers|pint|pints|wine|cocktail|drinks?|pub|lunch|sandwich|dinner|breakfast|coffee|pizza|meal|holiday|vacation|nap|slept|sleeping|walk|watched tv|movie|gym|party|gaming)\b/i;
- const explicitRejection=/\b(?:personal (?:in nature|activity|event)|no (?:clear |direct |meaningful )?(?:connection|relationship|relevance|contribution|impact)|unrelated|irrelevant|does(?: not|n't) (?:advance|contribute|relate|offer)|not connected to|no business (?:relevance|value|impact)|no (?:insights|evidence) (?:into|of|about|for) (?:the )?(?:venture|business)|not a (?:business|validation) milestone|no impact on (?:the )?business)\b/i;
- const directPersonal=/\b(?:had|drank|drunk|drink|drinking|ate|eat|eating|enjoyed|went for|went to|got myself)\b/i.test(event)&&personalActivity.test(event);
- if(explicitRejection.test(explanation)&&!genuineOutcome.test(event))
-  return {score:0,reason:'The milestone assessment states that this activity is unrelated to the business goals.'};
- if(directPersonal&&!genuineOutcome.test(event))
-  return {score:0,reason:'A personal activity without a demonstrated business outcome provides no validation evidence.'};
- if(personalActivity.test(event)&&!genuineOutcome.test(event)&&!/\b(?:experiment|tested|surveyed|product|market|supplier|sales)\b/.test(event))
-  return {score:0,reason:'No business-relevant outcome was identified.'};
- return {score:1,reason:'Potential business relevance; assess outcome and supporting evidence separately.'};
+ // Conservative relevance gate. A reported personal event is not a business
+ // milestone merely because it was entered as "Achieved" or described positively.
+ // Evaluate the EVENT, not keywords in the AI rationale (which may be a negation).
+ const event=[m.title,m.target,m.reported_evidence,m.evidence].filter(Boolean).join(' ').toLowerCase();
+ const rationale=String(m.why||'').toLowerCase();
+ const rejection=/\b(?:personal (?:in nature|activity|event)|no (?:clear |direct |meaningful )?(?:connection|relationship|relevance|contribution|impact)|unrelated|irrelevant|does(?: not|n't) (?:advance|contribute|relate|offer)|not connected to|no business (?:relevance|value|impact)|no (?:insights|evidence) (?:into|of|about|for) (?:the )?(?:venture|business)|not a (?:business|validation) milestone|no impact on (?:the )?business)\b/i;
+ const businessAction=/\b(?:interview(?:ed|s|ing)?|survey(?:ed|s)?|research(?:ed)?|tested|testing|test results?|validated|built|build|develop(?:ed|ing|ment)?|prototype|product|feature|service|pilot|trial|contract|signed|secured|sold|sales|purchase(?:d|s)?|pay(?:ing|ment)?|paid|revenue|margin|customers?|clients?|users?|sign[\s-]?ups?|registrations?|cohort|retention|adoption|churn|conversion|market|launch(?:ed)?|deployed|shipped|integrat(?:ed|ion)|patent|funding|investment|partnership|partner|supplier|manufactur(?:ed|ing)?|reliab(?:ility|le)|operations?|delivery|return rates?|wash(?:ing|ed)?|caf[eé]s?|stores?|farm(?:ers|s)?|sensors?|regulator(?:y)?|compliance|feasib(?:ility|le)|fieldwork|prototype)\b/i;
+ const preparation=/\b(?:upskill(?:ing)?|learn(?:ed|t|ing)?|train(?:ing|ed)?|course|certificate|brainstorm(?:ed|ing)?|idea|planned|planning|draft(?:ed)?|concept|workshop)\b/i;
+ // Only treat the rejection as dispositive when the entered event does not
+ // itself describe an observable business action; otherwise flag for review.
+ if(rejection.test(rationale)&&!businessAction.test(event))
+  return {score:0,reason:'The assessment identifies no business outcome or validation evidence.'};
+ if(businessAction.test(event))
+  return {score:1,reason:'Potentially relevant to the venture; significance and evidence still require assessment.'};
+ if(preparation.test(event))
+  return {score:1,reason:'Preparatory work may support execution but is not customer validation.'};
+ // Default to zero, not the former 3/5, for unspecified or personal events.
+ // This covers arbitrary examples such as seeing a snowman, having drinks,
+ // meeting a friend or watching a film without endlessly adding keywords.
+ return {score:0,reason:'No measurable connection to the venture objectives or validation evidence is described.'};
 }
 function estimateMilestone(m){
  const text=[m.title,m.target,m.reported_evidence,m.evidence].filter(Boolean).join(' ').toLowerCase();
@@ -279,7 +284,7 @@ function estimateMilestone(m){
  if(relevance.score===0)return {value:0,difficulty:1,why:relevance.reason+'. No validation progress should be credited.'};
  const scoreDetails=[];
  // Weight *outcomes* more heavily than activities or ambitions. These are provisional ratings.
- let value=3,difficulty=2;
+ let value=2,difficulty=2;
  if(/\b(upskill|upskilling|learned|learnt|learning|training|course|tutorial|certificate|certification of attendance|attended webinar|learned ai|learnt ai|ai skills)\b/.test(text)){value=1;difficulty=1;scoreDetails.push('Internal learning or upskilling alone does not yet validate customer demand.')}
  if(/\b(idea|brainstorm|draft|planning|research only|introductory meeting)\b/.test(text)){value=Math.min(value,2);scoreDetails.push('Early preparatory activity.')}
  if(/\b(interview|survey|customer discovery|customer feedback)\b/.test(text)){value=Math.max(value,3);difficulty=Math.max(difficulty,2);scoreDetails.push('Customer discovery is useful, but not proof of purchasing.')}
@@ -357,9 +362,9 @@ function routeSnapshot(){
   const entry=linked.sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
   const score=entry?entryRating(entry).score:null;
   const direction=entry?(score===null?'unclear':score<0?'negative':score===0?'mixed':'positive'):(m.reported_evidence?m.evidence_direction||'unclear':'none');
-  return {i,m,direction,reported:!!entry||!!m.reported_evidence};
+  return {i,m,direction:milestoneRelevance(m).score===0?'none':direction,reported:(!!entry||!!m.reported_evidence)&&milestoneRelevance(m).score>0};
  });
- const reported=observations.filter(o=>o.reported&&['positive','negative','mixed'].includes(o.direction));
+ const reported=observations.filter(o=>o.reported&&milestoneRelevance(o.m).score>0&&['positive','negative','mixed'].includes(o.direction));
  const last=reported.length?reported[reported.length-1]:null;
  const negative=reported.filter(o=>o.direction==='negative');
  const gap=negative.length?negative[negative.length-1]:null;
@@ -967,7 +972,7 @@ function classifyJourneyStages(){
  const plan=state.plan,milestones=plan?.milestones||[];
  const observations=milestones.map((m,i)=>{
   const linked=(state.entries||[]).some(e=>!e.demo&&e.linkedMilestone===m.title);
-  const reported=linked||!!m.reported_evidence;
+  const reported=(linked||!!m.reported_evidence)&&milestoneRelevance(m).score>0;
   const title=[m.title,m.target,m.why].join(' ').toLowerCase();
   const foundation=/idea|initial research|founder|explor|discovery|brainstorm|concept|interview|research|planning|problem validation/.test(title);
   return {i,reported,foundation};
@@ -1102,7 +1107,8 @@ async function assessAndPlaceMilestone(data){
  const direction=reported&&preliminaryRelevance.score>0?decideMilestoneDirection(details+' '+evidence,ai&&typeof ai.score==='number'?ai.score:null):'none';
  const proposed={title,target:details,evidence:evidence||'',why:ai?.why||'Assessment based on the milestone description and venture context.',date:data.date||'',timeframe:data.date||'To be planned',status:reported?'In progress':'Not started',source:'user-entered',assessment_source:ai?'Gemini suggestion + provisional confidence':'Provisional rules',evidence_direction:direction};
  if(reported)proposed.reported_evidence=details;
- if(reported)proposed.evidence_confidence=estimateEvidenceConfidence(proposed,evidence,direction);
+ if(reported)proposed.evidence_confidence=preliminaryRelevance.score===0?0:estimateEvidenceConfidence(proposed,evidence,direction);
+ proposed.relevance_assessment=preliminaryRelevance.reason;
  if(data.stage!=='auto')proposed.assessed_stage=data.stage;
  else proposed.assessed_stage=['foundation','prototype','pilot','commercial','scale'][milestoneStage(proposed)];
  const position=findMilestonePosition(proposed,plan);
