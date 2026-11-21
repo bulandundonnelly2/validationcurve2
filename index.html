@@ -582,7 +582,7 @@ function hockeyStickRoadmap(snapshot){
 let routeRequestInFlight=null;
 function growthRouteSignature(){
  const plan=state.plan||{};
- return JSON.stringify({model:'milestone-targets-v2-time-objectives',business:state.comparisonBusinessType||inferredBusinessType(),context:assessmentContext(),count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction])});
+ return JSON.stringify({model:'milestone-targets-v2-time-objectives',business:state.comparisonBusinessType||inferredBusinessType(),context:assessmentContext(),count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30)});
 }
 function tailoredRoute(id){
  const cache=state.growthRouteCache;
@@ -608,7 +608,7 @@ async function generateTailoredRoutes(force=false){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),58000);
  routeRequestInFlight={signature,controller};
  updateRouteGenerationStatus('Analysing this business and building measurable routes…','loading');
- const raw=state.plan.milestones.map(m=>({title:m.title,target:m.target||'',reported_evidence:m.reported_evidence||'',evidence:m.evidence||'',status:m.status||'Not started'}));
+ const raw=state.plan.milestones.map(m=>({title:m.title,target:m.target||'',reported_evidence:m.reported_evidence||'',evidence:m.evidence||'',status:m.status||'Not started',linked_evidence:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title).map(e=>[e.title,e.note,e.category].filter(Boolean).join(' · ')).join('; ').slice(0,350)}));
  try{
   const response=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({
    mode:'growth_routes',count:routeMilestoneCount(),context:{...assessmentContext(),ventureType:state.comparisonBusinessType||inferredBusinessType(),description:(getContext().description||state.plan.summary||'').slice(0,800)},milestones:raw
@@ -666,7 +666,7 @@ function setupReferenceControls(){
  const toolbar=document.createElement('div');toolbar.className='reference-tools';
  toolbar.setAttribute('role','group');toolbar.setAttribute('aria-label','Reactive business pathways');
  const options=Object.keys(businessPathDefaults);
- toolbar.innerHTML='<span class="reference-intro">Routes</span><label>Business <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<label class="route-count-label">Future milestones <select id="routeMilestoneCount" aria-label="Number of future milestones on each route">'+[3,4,5,6,7,8,9,10].map(n=>'<option value="'+n+'"'+(n===routeMilestoneCount()?' selected':'')+'>'+n+'</option>').join('')+'</select></label><button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">About routes</button>';
+ toolbar.innerHTML='<span class="reference-intro">Routes</span><label>Business <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<label class="route-count-label">Max future milestones <select id="routeMilestoneCount" aria-label="Maximum number of future milestones on each route">'+[3,4,5,6,7,8,9,10].map(n=>'<option value="'+n+'"'+(n===routeMilestoneCount()?' selected':'')+'>'+n+'</option>').join('')+'</select></label><button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">About routes</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
  explainer.textContent='Routes begin at your first business milestone, show comparisons with your reported milestones, then continue into future checkpoints. Each coloured gain is conditional on achieving the required evidence; dashed paths are not verified progress.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
