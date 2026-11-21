@@ -333,130 +333,161 @@ function setupReferenceControlsRefresh(){
  $('#planView .reference-tools')?.remove();$('#planView .reference-info')?.remove();
  setupReferenceControls();
 }
+
+/* An alternative path is a sequence of evidence milestones, not a mathematical curve.
+   Historical nodes show what this route would have required at each observed stage. */
+const routeMilestoneTracks={
+ steady:[
+  ['Understand a specific customer problem','Interviews recording unmet needs and consistent customer behaviours'],
+  ['Test a usable solution','Observed prototype completion and recorded usability outcomes'],
+  ['Prove willingness to pay','Paid trials or signed purchases by independent customers'],
+  ['Validate repeat demand','Repeat purchases, renewals or sustained usage over time'],
+  ['Demonstrate unit economics','Actual margin, delivery cost and acquisition data']
+ ],
+ hockey:[
+  ['Identify a scalable customer segment','Evidence of a sufficiently repeatable customer problem'],
+  ['Prove a repeatable activation journey','Measured conversion from acquisition to real product use'],
+  ['Demonstrate paid acquisition efficiency','Acquisition costs compared against observed customer value'],
+  ['Prove retention and scalable operations','Cohort retention and delivery quality as volume rises'],
+  ['Repeat growth across channels','Independent growth cohorts using multiple acquisition routes']
+ ],
+ s:[
+  ['Identify early adopters','Independent interviews with a clearly defined early adopter group'],
+  ['Confirm practical product use','Observed use and usability feedback from early adopters'],
+  ['Measure active adoption','Cohort engagement, conversion or purchase evidence'],
+  ['Expand beyond early adopters','Reproducible adoption with a second segment'],
+  ['Track adoption saturation','Retention, drop-off and barriers to continued expansion']
+ ],
+ steps:[
+  ['Validate an initial customer problem','Direct customer observations or structured discovery results'],
+  ['Demonstrate a working solution','Measured prototype or pilot success criteria'],
+  ['Secure a first meaningful commitment','Paid pilot, signed order or binding partnership'],
+  ['Reproduce the breakthrough','Independent repeat of a major technical or commercial result'],
+  ['Unlock a new operating stage','Evidence of capacity, funding or delivery readiness']
+ ],
+ long:[
+  ['Define the technical problem','Documented requirements and measurable feasibility thresholds'],
+  ['Build a proof of concept','Recorded tests showing core functionality'],
+  ['Verify technical performance','Repeatable measurements against predefined requirements'],
+  ['Validate under real operating conditions','Independent partner or field-test results'],
+  ['Demonstrate commercial feasibility','Pilot economics, compliance and practical deployment evidence']
+ ]
+};
+function expectedRouteMilestone(id,sequenceIndex,total){
+ const track=routeMilestoneTracks[id]||routeMilestoneTracks.steady;
+ const slot=total<=1?0:Math.min(track.length-1,Math.round(sequenceIndex*(track.length-1)/Math.max(1,total-1)));
+ const [title,evidence]=track[slot];
+ return {title,evidence,slot};
+}
+function compareExpectedWithActual(expected,actual){
+ const text=[actual.title,actual.target,actual.reported_evidence,actual.evidence].filter(Boolean).join(' ').toLowerCase();
+ const concepts={
+  customer:/interview|customer|café|cafe|consumer|user|needs|problem/,
+  prototype:/prototype|working|build|test|technical|proof of concept/,
+  usability:/usab|convenien|return|friction|experience|testing|pilot/,
+  payment:/paid|paying|purchase|contract|sale|revenue|order/,
+  repeat:/repeat|retention|renew|returning customer|cohort/,
+  scaling:/scale|growth|channels|acquisition|multiple|expansion/,
+  economics:/margin|economics|cost|profit|pricing/,
+  technical:/technical|performance|engineering|feasibility/
+ };
+ const goal=[expected.title,expected.evidence].join(' ').toLowerCase();
+ const matches=Object.entries(concepts).filter(([key,re])=>re.test(goal)&&re.test(text)).map(([key])=>key);
+ return matches.length?'Related activity reported — confirm the required evidence.':'No clear matching evidence in this milestone.';
+}
 function drawReferenceCurves(){
  const svg=$('#planView .map-chart svg'),chart=$('#planView .map-chart');
  if(!svg||!chart)return;
  svg.querySelector('#referenceOverlays')?.remove();
  chart.querySelector('.route-guidance')?.remove();
  const selected=Array.isArray(state.comparisonCurves)?state.comparisonCurves:[];
- if(!selected.length){if(typeof applyJourneyMode==='function')applyJourneyMode();return;}
- const snap=routeSnapshot(),points=[...svg.querySelectorAll('g[data-plan-point]')];
- const latest=snap.last,point=points[latest?latest.i:0]?.querySelector('circle');
- const anchorX=point?Number(point.getAttribute('cx')):75;
- const anchorY=point?Number(point.getAttribute('cy')):170;
- const observedPoints=snap.reported.map(o=>{
-  const c=points[o.i]?.querySelector('circle');
-  return c?{i:o.i,x:Number(c.getAttribute('cx')),y:Number(c.getAttribute('cy')),title:o.m.title}:null;
+ if(!selected.length){if(typeof applyJourneyMode==='function')applyJourneyMode();return}
+ const snap=routeSnapshot(),nodes=[...svg.querySelectorAll('g[data-plan-point]')];
+ const reported=snap.reported.map(o=>{
+  const circle=nodes[o.i]?.querySelector('circle');
+  return circle?{i:o.i,x:Number(circle.getAttribute('cx')),y:Number(circle.getAttribute('cy')),milestone:o.m}:null;
  }).filter(Boolean);
- const baseline=observedPoints[0]||null;
- const historyEnd=observedPoints[observedPoints.length-1]||null;
+ const last=reported[reported.length-1];
+ const anchorX=last?.x??75,anchorY=last?.y??150;
  svg.setAttribute('viewBox','0 0 820 205');
- const ns='http://www.w3.org/2000/svg',group=document.createElementNS(ns,'g');
+ const ns='http://www.w3.org/2000/svg';
+ const group=document.createElementNS(ns,'g');
  group.setAttribute('id','referenceOverlays');
- group.setAttribute('aria-label','Evidence-anchored, interactive strategic route options');
- // All routes begin at the last reported milestone. They branch into separate future decisions.
- const models=referenceModels.filter(m=>selected.includes(m.id));
- const grouped=models.map((m,index)=>{
-  const steps=routeSteps(m.id,snap);
-  const readiness=routeReadiness(steps,snap);
-  return {model:m,steps,readiness,index};
- });
- const lanes=grouped.length;
- grouped.forEach(({model,steps,readiness,index})=>{
-  // Historical comparison uses the same milestones, start and fixed display scale.
-  // Theoretical paths are normalized shape scenarios, NOT industry peer averages.
-  if(baseline&&historyEnd&&historyEnd.x>baseline.x+1){
-   const startX=baseline.x,endX=historyEnd.x;
-   const ambition=Math.max(0,Math.min(3,Number(state.validationAmbition)||0));
-   const targetRise=40+ambition*9;
-   const pathPoints=observedPoints.map(o=>{
-    const t=Math.max(0,Math.min(1,(o.x-startX)/(endX-startX)));
-    const shape=Math.max(0,Math.min(1,model.formula(t)));
-    return {x:o.x,y:Math.max(25,Math.min(178,baseline.y-targetRise*shape)),o};
-   });
-   if(pathPoints.length>1){
-    const hist=document.createElementNS(ns,'path');
-    hist.setAttribute('class','reference-path historical-reference');
-    hist.setAttribute('stroke',model.color);
-    hist.setAttribute('stroke-width','2.2');
-    hist.setAttribute('stroke-dasharray','3 4');
-    hist.setAttribute('opacity','.65');
-    hist.setAttribute('d',pathPoints.map((p,k)=>(k?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' '));
-    const t=document.createElementNS(ns,'title');
-    t.textContent=model.name+' hypothetical historical trajectory, from the first reported milestone. Compared at each reported milestone; not an external benchmark.';
-    hist.appendChild(t);group.appendChild(hist);
-    pathPoints.slice(1).forEach(({x,y,o},j)=>{
-     const marker=document.createElementNS(ns,'g');
-     marker.setAttribute('role','button');marker.setAttribute('tabindex','0');
-     marker.style.cursor='pointer';
-     marker.setAttribute('aria-label','Compare '+o.title+' against '+model.name);
-     const c=document.createElementNS(ns,'circle');c.setAttribute('cx',x);c.setAttribute('cy',y);
-     c.setAttribute('r','4.5');c.setAttribute('fill',model.color);c.setAttribute('stroke','#16382c');c.setAttribute('stroke-width','1');
-     marker.appendChild(c);
-     const title=document.createElementNS(ns,'title');
-     const difference=(o.y-y);
-     title.textContent=model.name+' at '+o.title+': '+(Math.abs(difference)<4?'similar to':difference>0?'below':'above')+' the illustrative trajectory. This difference is graphical, not a validated performance score.';
-     marker.appendChild(title);
-     marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
-     marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
-     group.appendChild(marker);
-    });
-   }
-  }
-  if(!steps.length)return;
-  const offset=index-(lanes-1)/2;
-  const shift=offset*24;
-  const goalY=Math.max(27,Math.min(176,anchorY-27-readiness.workload*6+shift));
-  const left=anchorX+34,right=780;
-  const segment=steps.map((step,j)=>{
-   const t=(j+1)/steps.length;
-   const x=left+(right-left)*t;
-   // Higher difficulty delays expected readiness. This line is a route map, not a performance prediction.
-   const friction=Math.max(0,step.difficulty-3)*4;
-   const y=Math.max(24,Math.min(179,anchorY+(goalY-anchorY)*t+friction));
-   return {x,y,step};
+ group.setAttribute('aria-label','Route milestones compared against reported business milestones');
+ const models=referenceModels.filter(model=>selected.includes(model.id));
+ models.forEach((model,routeIndex)=>{
+  const routeStepsNow=routeSteps(model.id,snap);
+  const offset=routeIndex-(models.length-1)/2;
+  const historical=reported.map((o,index)=>{
+   const expected=expectedRouteMilestone(model.id,index,reported.length);
+   // Separating route tracks is a visual aid, not a comparative performance calculation.
+   const y=Math.max(32,Math.min(166,(reported[0]?.y??150)-index*9+offset*10));
+   return {...o,y,expected};
   });
-  const coords=[[anchorX,anchorY],...segment.map(p=>[p.x,p.y])];
-  const route=document.createElementNS(ns,'path');route.setAttribute('class','reference-path');
-  route.setAttribute('stroke',model.color);route.setAttribute('stroke-width','2.5');
-  route.setAttribute('d',coords.map((p,k)=>(k?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '));
-  route.setAttribute('aria-label',model.name+' strategic route, '+steps.length+' proposed tests');
-  group.appendChild(route);
-  segment.forEach(({x,y,step},j)=>{
-   const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');
-   marker.setAttribute('role','button');marker.setAttribute('aria-label',model.name+': '+step.title);
+  const pastEnd=historical[historical.length-1];
+  const futureStartY=pastEnd?.y??anchorY;
+  const startX=anchorX+34,endX=780;
+  const future=routeStepsNow.map((step,index)=>{
+   const t=(index+1)/routeStepsNow.length;
+   return {x:startX+(endX-startX)*t,y:Math.max(25,Math.min(175,futureStartY-(index+1)*12+Math.max(0,step.difficulty-3)*5)),step,index};
+  });
+  // A single connected route path: expected historical validation -> required next evidence.
+  const pts=[...historical.map(o=>[o.x,o.y]),...future.map(p=>[p.x,p.y])];
+  if(pts.length>1){
+   const path=document.createElementNS(ns,'path');path.setAttribute('class','reference-path');
+   path.setAttribute('stroke',model.color);path.setAttribute('stroke-width','2.5');
+   path.setAttribute('d',pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '));
+   const label=document.createElementNS(ns,'title');label.textContent=model.name+' — expected validation milestones and next tests (illustrative strategy, not benchmark)';
+   path.appendChild(label);group.appendChild(path);
+  }
+  historical.forEach(o=>{
+   const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
+   marker.setAttribute('aria-label',model.name+' at '+o.milestone.title+': expected '+o.expected.title);
    marker.style.cursor='pointer';
+   const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',o.x);dot.setAttribute('cy',o.y);
+   dot.setAttribute('r','5.5');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#16382c');dot.setAttribute('stroke-width','1.4');
+   const tt=document.createElementNS(ns,'title');tt.textContent='If following '+model.name+', milestone '+(o.i+1)+' should validate: '+o.expected.title+'. Required: '+o.expected.evidence;
+   marker.append(dot,tt);
+   marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
+   marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
+   group.appendChild(marker);
+  });
+  future.forEach(({x,y,step,index})=>{
+   const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
+   marker.setAttribute('aria-label',model.name+' future test '+step.title);marker.style.cursor='pointer';
    const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);
-   dot.setAttribute('r',j===0?8:6);dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15392e');dot.setAttribute('stroke-width','2');
-   const title=document.createElementNS(ns,'title');title.textContent=model.name+' | '+step.title+' | '+step.evidence;
-   marker.append(dot,title);marker.addEventListener('click',()=>openRouteGuidance(model.id,j));
-   marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openRouteGuidance(model.id,j)}});
+   dot.setAttribute('r','7');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#16382c');dot.setAttribute('stroke-width','2');
+   const tt=document.createElementNS(ns,'title');tt.textContent=step.title+': '+step.evidence;
+   marker.append(dot,tt);
+   marker.addEventListener('click',()=>openRouteGuidance(model.id,index));
+   marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openRouteGuidance(model.id,index)}});
    group.appendChild(marker);
   });
  });
- const firstPoint=svg.querySelector('g[data-plan-point]');
- if(firstPoint)svg.insertBefore(group,firstPoint);else svg.appendChild(group);
+ const firstNode=svg.querySelector('g[data-plan-point]');
+ if(firstNode)svg.insertBefore(group,firstNode);else svg.appendChild(group);
  const selectedRoute=state.activeRoute&&selected.includes(state.activeRoute)?state.activeRoute:models[0]?.id;
  if(selectedRoute){
   const model=referenceModels.find(m=>m.id===selectedRoute),steps=routeSteps(selectedRoute,snap);
-  const p=document.createElement('div');p.className='route-guidance';
-  p.innerHTML='<strong>Next route: '+esc(model.name)+'</strong> · '+(steps.length?esc(steps[0].title):'All suggested tests are already on your plan')+' <button type="button" data-open-route>See required evidence ↗</button>';
-  chart.appendChild(p);
-  p.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
+  const tip=document.createElement('div');tip.className='route-guidance';
+  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(steps.length?esc(steps[0].title):'Next action: review your evidence')+' <button type="button" data-open-route>View route milestones ↗</button>';
+  chart.appendChild(tip);
+  tip.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
  }
  if(typeof applyJourneyMode==='function')applyJourneyMode();
 }
-function openHistoricalComparison(id, milestoneIndex){
- const model=referenceModels.find(m=>m.id===id),m=state.plan?.milestones?.[milestoneIndex];
- if(!model||!m)return;
+function openHistoricalComparison(id,milestoneIndex){
+ const model=referenceModels.find(m=>m.id===id),actual=state.plan?.milestones?.[milestoneIndex];
+ if(!model||!actual)return;
+ const snap=routeSnapshot();
+ const position=snap.reported.findIndex(o=>o.i===milestoneIndex);
+ const expected=expectedRouteMilestone(id,Math.max(0,position),Math.max(1,snap.reported.length));
  state.navigatorOpen=true;state.validationPanelOpen=false;state.activeRoute=id;
  save();renderValidationLayer();renderNavigator();
  const panel=$('#navigatorPanel');
  panel.querySelector('.history-comparison')?.remove();
  const section=document.createElement('div');section.className='navigator-card history-comparison';
- const snap=routeSnapshot(),obs=snap.observations[milestoneIndex];
- const steps=routeSteps(id,snap);
- section.innerHTML='<div class="navigator-sub">EARLIER MILESTONE COMPARISON</div><h4>'+esc(m.title)+'</h4><p>Comparison path: '+esc(model.name)+'. The reference shape is a hypothetical scenario aligned to the first reported milestone, not a statistical sector benchmark.</p><p>Reported outcome: '+esc(obs?.direction||'unknown')+'. '+(m.reported_evidence?'Evidence was reported in the uploaded document.':'Review any attached evidence to judge the result.')+'</p><p>What would support this strategy now: '+esc(steps[0]?.evidence||'Review the venture evidence and define a measurable next test.')+'</p><button type="button" id="historyRouteActions">Explore required next steps</button>';
+ section.innerHTML='<div class="navigator-sub">IF FOLLOWING '+esc(model.name.toUpperCase())+'</div><h4>Expected milestone: '+esc(expected.title)+'</h4><p><b>Required evidence:</b> '+esc(expected.evidence)+'</p><div class="navigator-sub">YOUR ACTUAL MILESTONE</div><p><b>'+esc(actual.title)+'</b></p><p>'+esc(compareExpectedWithActual(expected,actual))+'</p><p>These are suggested route checkpoints, not sector norms or proof of success. Evidence must be reviewed before a route milestone is marked validated.</p><button type="button" id="historyRouteActions">Explore next route tests</button>';
  const card=panel.querySelector('.navigator-card');if(card)card.after(section);else panel.appendChild(section);
  section.querySelector('#historyRouteActions').onclick=()=>openRouteGuidance(id,0);
 }
