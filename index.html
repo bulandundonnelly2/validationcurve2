@@ -257,6 +257,7 @@ const ambitionProfiles=[
 // Read the entered event, then use the AI rationale to rule out clearly irrelevant events.
 // Never search the AI rationale for traction keywords: it may mention them only to say they are absent.
 function milestoneRelevance(m){
+ if(m.value_assessment&&Number.isInteger(m.value_assessment.relevance))return {score:m.value_assessment.relevance>0?1:0,reason:m.value_assessment.explanation||'Contextual AI relevance assessment'};
  // Conservative relevance gate. A reported personal event is not a business
  // milestone merely because it was entered as "Achieved" or described positively.
  // Evaluate the EVENT, not keywords in the AI rationale (which may be a negation).
@@ -278,7 +279,14 @@ function milestoneRelevance(m){
  // meeting a friend or watching a film without endlessly adding keywords.
  return {score:0,reason:'No measurable connection to the venture objectives or validation evidence is described.'};
 }
+function assessedMilestoneOverride(m){
+ const a=m.value_assessment;
+ if(!a||!Number.isInteger(a.potential_value)||!Number.isInteger(a.difficulty))return null;
+ return {value:Math.max(0,Math.min(5,a.relevance===0?0:a.potential_value)),difficulty:Math.max(1,Math.min(5,a.difficulty)),why:a.explanation||'Provisional contextual assessment.'};
+}
 function estimateMilestone(m){
+ const override=assessedMilestoneOverride(m);
+ if(override)return override;
  const text=[m.title,m.target,m.reported_evidence,m.evidence].filter(Boolean).join(' ').toLowerCase();
  const relevance=milestoneRelevance(m);
  if(relevance.score===0)return {value:0,difficulty:1,why:relevance.reason+'. No validation progress should be credited.'};
@@ -290,6 +298,14 @@ function estimateMilestone(m){
  if(/\b(interview|survey|customer discovery|customer feedback)\b/.test(text)){value=Math.max(value,3);difficulty=Math.max(difficulty,2);scoreDetails.push('Customer discovery is useful, but not proof of purchasing.')}
  if(/\b(prototype|working model|usability test|pilot|field test|customer trial)\b/.test(text)){value=Math.max(value,4);difficulty=Math.max(difficulty,3);scoreDetails.push('Real-world testing reduces product and adoption uncertainty.')}
  if(/\b(paid|paying|first sale|contract|renewal|retention|revenue|purchase|commercial)\b/.test(text)){value=5;difficulty=Math.max(difficulty,3);scoreDetails.push('Commercial commitment is a strong demand signal.')}
+ if(/\b(invest(?:ment|or|ors|ed|ing)?|funding|fundraise|financing|capital raise|seed round|series [a-f])\b/i.test(text)){
+  const amount=text.match(/(?:£|\$|€)\s*([\d,]+(?:\.\d+)?)\s*(million|billion|m|bn)?|\b([\d,]+)\s*(million|billion|m|bn)?\s*(?:pounds|gbp|usd|investment|funding)/i);
+  const raw=amount?Number((amount[1]||amount[3]||'0').replace(/,/g,'')):0;
+  const units=(amount?.[2]||amount?.[4]||'').toLowerCase();
+  const figure=raw*(units==='million'||units==='m'?1e6:units==='billion'||units==='bn'?1e9:1);
+  value=Math.max(value,figure>=1000000?5:4);difficulty=Math.max(difficulty,figure>=1000000?5:4);
+  scoreDetails.push('Financing can substantially improve resources and runway but does not by itself validate customer demand. A proposed amount is not an achievement.');
+ }
  const counts=[...text.matchAll(/\b(\d[\d,]*)(?:\s+)(sign[\s-]?ups?|registrations?|users?|customers?|subscribers?|downloads?|active accounts?|paying accounts?)\b/g)]
    .map(x=>({count:Number(x[1].replace(/,/g,'')),kind:x[2]}));
  const large=counts.filter(x=>x.count>=1000).sort((a,b)=>b.count-a.count)[0];
@@ -1092,6 +1108,14 @@ async function assessAndPlaceMilestone(data){
  const title=data.title.trim(),details=data.details.trim(),evidence=data.evidence.trim();
  const reported=data.progress==='reported';
  if(!title||!details)throw Error('Add a milestone name and details.');
+ let valueAssessment=null;
+ try{
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+  try{
+   const response=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({mode:'milestone_value',title,details,evidence,progress:data.progress,context:{...assessmentContext(),planSummary:plan.summary||''}})});
+   if(response.ok)valueAssessment=await response.json();
+  }finally{clearTimeout(timer)}
+ }catch(err){console.warn('Contextual milestone value assessment unavailable',err)}
  let ai=null;
  if(reported){
   try{
@@ -1103,9 +1127,14 @@ async function assessAndPlaceMilestone(data){
    }finally{clearTimeout(timer)}
   }catch(err){console.warn('AI assessment unavailable, using provisional assessment:',err)}
  }
- const preliminaryRelevance=milestoneRelevance({title,target:details,reported_evidence:reported?details:'',why:ai?.why||''});
+ const preliminaryRelevance=valueAssessment?{score:valueAssessment.relevance>0?1:0,reason:valueAssessment.explanation}:milestoneRelevance({title,target:details,reported_evidence:reported?details:'',why:ai?.why||''});
  const direction=reported&&preliminaryRelevance.score>0?decideMilestoneDirection(details+' '+evidence,ai&&typeof ai.score==='number'?ai.score:null):'none';
  const proposed={title,target:details,evidence:evidence||'',why:ai?.why||'Assessment based on the milestone description and venture context.',date:data.date||'',timeframe:data.date||'To be planned',status:reported?'In progress':'Not started',source:'user-entered',assessment_source:ai?'Gemini suggestion + provisional confidence':'Provisional rules',evidence_direction:direction};
+ if(valueAssessment){
+  proposed.value_assessment=valueAssessment;
+  proposed.assessment_source='Gemini contextual milestone assessment';
+  proposed.why=valueAssessment.explanation;
+ }
  if(reported)proposed.reported_evidence=details;
  if(reported)proposed.evidence_confidence=preliminaryRelevance.score===0?0:estimateEvidenceConfidence(proposed,evidence,direction);
  proposed.relevance_assessment=preliminaryRelevance.reason;
@@ -1114,7 +1143,7 @@ async function assessAndPlaceMilestone(data){
  const position=findMilestonePosition(proposed,plan);
  plan.milestones.splice(position,0,proposed);
  save();renderPlan();
- const summary='Milestone placed at position '+(position+1)+' and plotted by assessed business relevance and value. Value '+estimateMilestone(proposed).value+'/5; difficulty '+estimateMilestone(proposed).difficulty+'/5. '+(reported?'Reported outcome: '+direction+'; provisional confidence '+Math.round((proposed.evidence_confidence||0)*100)+'%.':'Planned: no progress credited.');
+ const summary='Milestone placed at position '+(position+1)+' · '+(valueAssessment?'Contextual AI assessment':'Provisional fallback assessment')+'. Value '+estimateMilestone(proposed).value+'/5; difficulty '+estimateMilestone(proposed).difficulty+'/5. '+(reported?'Reported outcome: '+direction+'; provisional confidence '+Math.round((proposed.evidence_confidence||0)*100)+'%.':'Planned: no progress credited.');
  const el=$('#planView [data-plan-point="'+position+'"]');
  if(el){el.setAttribute('aria-label',el.getAttribute('aria-label')+' — '+summary);el.dispatchEvent(new Event('click',{bubbles:true}))}
  return summary;
