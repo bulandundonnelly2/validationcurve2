@@ -19,11 +19,11 @@
   }
   return true;
  }
- function layout(route,originX,originY,endX,maxMonths){
+ function layout(route,originX,originY,endX,maxMonths,comparisonMax){
   if(!validRoute(route))return null;
   const last=Number(route.steps[route.steps.length-1].target_value);
   const baseline=Number(route.metric_baseline);
-  const total=last-baseline;
+  const total=(Number.isFinite(Number(comparisonMax))&&Number(comparisonMax)>last?Number(comparisonMax):last)-baseline;
   const duration=Math.max(1,Number(maxMonths)||route.steps[route.steps.length-1].months_from_start);
   const x0=Number(originX),y0=Number(originY);
   if(![x0,y0,Number(endX)].every(Number.isFinite)||endX<=x0)return null;
@@ -32,6 +32,12 @@
    const ratio=total>0?Math.max(0,Math.min(1,(Number(step.target_value)-baseline)/total)):0;
    return [x0+(endX-x0)*step.months_from_start/duration,y0-rise*ratio];
   })];
+ }
+ function sharedComparisonMax(route,routes){
+  if(!validRoute(route)||!Array.isArray(routes))return null;
+  const key=r=>String(r.metric||'').trim().toLowerCase()+'|'+String(r.metric_unit||'').trim().toLowerCase();
+  const compatible=routes.filter(r=>validRoute(r)&&key(r)===key(route)&&Number(r.metric_baseline)===Number(route.metric_baseline));
+  return compatible.length>1?Math.max(...compatible.map(r=>Number(r.steps[r.steps.length-1].target_value))):null;
  }
  function inspectRouteShapes(routes){
   const output={};
@@ -42,5 +48,5 @@
   }
   return output;
  }
- return {ROUTES,validRoute,layout,inspectRouteShapes};
+ return {ROUTES,validRoute,layout,inspectRouteShapes,sharedComparisonMax};
 });
