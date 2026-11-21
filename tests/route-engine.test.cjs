@@ -70,3 +70,17 @@ test('Reject out-of-sequence dates and decreases',()=>{
  const b=createRoute('Biotechnology','s');b.steps[2].target_value=-5;
  assert.equal(engine.validRoute(b),false);
 });
+
+test('Routes with compatible metrics share a scale, instead of all reaching the top',()=>{
+ const a=createRoute('SaaS startup','steady'),b=createRoute('SaaS startup','hockey');
+ a.metric='paying customers';b.metric='paying customers';a.metric_unit='customers';b.metric_unit='customers';
+ const common=engine.sharedComparisonMax(a,[a,b]);
+ assert.equal(common,b.steps.at(-1).target_value);
+ const pa=engine.layout(a,75,153,1550,60,common);
+ const pb=engine.layout(b,75,153,1550,60,engine.sharedComparisonMax(b,[a,b]));
+ assert.ok(pa.at(-1)[1]>pb.at(-1)[1],'Smaller real target stays visibly lower');
+});
+test('Different units cannot be treated as comparable vertical scales',()=>{
+ const a=createRoute('Biotechnology','long'),b=createRoute('Biotechnology','steady');
+ assert.equal(engine.sharedComparisonMax(a,[a,b]),null);
+});
