@@ -625,13 +625,13 @@ function updateRouteGenerationStatus(message,kind){
  el.textContent=message;
  el.dataset.kind=kind||'info';
  const btn=$('#regenerateGrowthRoutes');
- if(btn){btn.disabled=kind==='loading';btn.textContent=kind==='loading'?'Analysing…':'Regenerate routes'}
+ if(btn){btn.disabled=kind==='loading';btn.textContent=kind==='loading'?'Analysing…':'Reassess routes'}
 }
 async function generateTailoredRoutes(force=false){
  if(!state.plan?.milestones?.length)return;
  const signature=growthRouteSignature();
- if(!force&&state.growthRouteCache?.signature===signature){
-  updateRouteGenerationStatus('AI routes · Conditional targets, not verified','ready');return;
+ if(state.growthRouteCache?.signature===signature){
+  updateRouteGenerationStatus(force?'Assessment unchanged · Same business plan and evidence. Edit milestones, objectives or assumptions to reassess.':'AI routes · Saved assessment for this business plan','ready');return;
  }
  if(routeRequestInFlight?.signature===signature)return;
  if(routeRequestInFlight)routeRequestInFlight.controller.abort();
@@ -709,7 +709,7 @@ function setupReferenceControls(){
  explainer.textContent='All routes begin at the first milestone. Horizontal position reflects estimated months. Vertical position comes from milestone targets: comparable routes sharing the same metric, units and baseline use a common scale; different metrics are normalized separately and must not be compared by absolute height. Dashed paths are conditional plans, not verified progress.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  const intelligence=document.createElement('div');intelligence.className='route-generation-status';
- intelligence.innerHTML='<span id="routeGenerationStatus" role="status" aria-live="polite">Preparing route analysis…</span><button id="regenerateGrowthRoutes" type="button">Regenerate routes</button>';
+ intelligence.innerHTML='<span id="routeGenerationStatus" role="status" aria-live="polite">Preparing route analysis…</span><button id="regenerateGrowthRoutes" type="button" title="Reassess when the business plan, milestones or evidence change">Reassess routes</button>';
  explainer.after(intelligence);
  intelligence.querySelector('#regenerateGrowthRoutes').onclick=()=>generateTailoredRoutes(true);
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
