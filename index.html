@@ -257,14 +257,21 @@ const ambitionProfiles=[
 // Read the entered event, then use the AI rationale to rule out clearly irrelevant events.
 // Never search the AI rationale for traction keywords: it may mention them only to say they are absent.
 function milestoneRelevance(m){
- const statement=[m.title,m.target,m.reported_evidence].filter(Boolean).join(' ').toLowerCase();
- const rationale=String(m.why||'').toLowerCase();
- const unrelated=/\b(had (?:a |some )?(?:nice )?lunch|eat (?:a |some )?sandwich|ate (?:a |some )?sandwich|personal lunch|went (?:out )?for lunch|had a coffee|went for a walk|watched tv)\b/;
- const strongBusinessEvent=/\b(customers?|caf[eé]s?|paid|contract|trial|prototype|testing|test results?|research|product|users?|registrations?|sign[\s-]?ups?|revenue|operational|client|sales|partner|acquisition|delivery|return(?:ed|s)?|business)\b/;
- const rationaleRejects=/\b(does not advance|does not contribute|not relevant to|unrelated to|purely personal|personal activity|no business relevance|doesn't advance|irrelevant to the (?:business|venture)|no validation value)\b/;
- if(unrelated.test(statement)&&!strongBusinessEvent.test(statement))return {score:0,reason:'Personal activity unrelated to venture validation'};
- if(rationaleRejects.test(rationale)&&!strongBusinessEvent.test(statement))return {score:0,reason:'Assessment identifies no contribution to the business objectives'};
- return {score:1,reason:'Business relevance requires review of the actual evidence'};
+ const event=[m.title,m.target,m.reported_evidence].filter(Boolean).join(' ').toLowerCase();
+ const explanation=String(m.why||'').toLowerCase();
+ // First distinguish a directly relevant result from a personal anecdote. Do NOT
+ // search the AI explanation for positive keywords: it often says "no customer value".
+ const genuineOutcome=/\b(?:signed|secured|paid|paying|contract(?:ed|s)?|invoic(?:e|ed)|revenue|sales|customers?|caf[eé]s?|prototype|pilot|trial|tested|user sign[\s-]?ups?|registrations?|users?|retention|research|validated|launched|business partners?)\b/i;
+ const personalActivity=/\b(?:beer|beers|pint|pints|wine|cocktail|drinks?|pub|lunch|sandwich|dinner|breakfast|coffee|pizza|meal|holiday|vacation|nap|slept|sleeping|walk|watched tv|movie|gym|party|gaming)\b/i;
+ const explicitRejection=/\b(?:personal (?:in nature|activity|event)|no (?:clear |direct |meaningful )?(?:connection|relationship|relevance|contribution|impact)|unrelated|irrelevant|does(?: not|n't) (?:advance|contribute|relate|offer)|not connected to|no business (?:relevance|value|impact)|no (?:insights|evidence) (?:into|of|about|for) (?:the )?(?:venture|business)|not a (?:business|validation) milestone|no impact on (?:the )?business)\b/i;
+ const directPersonal=/\b(?:had|drank|drunk|drink|drinking|ate|eat|eating|enjoyed|went for|went to|got myself)\b/i.test(event)&&personalActivity.test(event);
+ if(explicitRejection.test(explanation)&&!genuineOutcome.test(event))
+  return {score:0,reason:'The milestone assessment states that this activity is unrelated to the business goals.'};
+ if(directPersonal&&!genuineOutcome.test(event))
+  return {score:0,reason:'A personal activity without a demonstrated business outcome provides no validation evidence.'};
+ if(personalActivity.test(event)&&!genuineOutcome.test(event)&&!/\b(?:experiment|tested|surveyed|product|market|supplier|sales)\b/.test(event))
+  return {score:0,reason:'No business-relevant outcome was identified.'};
+ return {score:1,reason:'Potential business relevance; assess outcome and supporting evidence separately.'};
 }
 function estimateMilestone(m){
  const text=[m.title,m.target,m.reported_evidence,m.evidence].filter(Boolean).join(' ').toLowerCase();
@@ -989,29 +996,33 @@ function applyJourneyMode(){
  const view=['full','validated','foundations'].includes(state.journeyView)?state.journeyView:'full';
  const stages=classifyJourneyStages(),nodes=[...svg.querySelectorAll('g[data-plan-point]')];
  const mainCurve=svg.querySelector('path[stroke="url(#planGradient)"]');
- const visible=stages.map(o=>view==='full'||(view==='validated'&&o.reported)||(view==='foundations'&&o.stage==='foundation'));
+ const visible=stages.map(o=>view==='full'||(view==='validated'&&o.reported&&milestoneRelevance(state.plan.milestones[o.i]).score>0)||(view==='foundations'&&o.stage==='foundation'));
  nodes.forEach((node,i)=>{
   const stage=stages[i]?.stage||'future';
   node.style.display=visible[i]?'':'none';
   node.style.opacity=stage==='foundation'?'.5':stage==='future'?'.72':'1';
   node.dataset.journeyStage=stage;
+  const irrelevant=milestoneRelevance(state.plan.milestones[i]).score===0;
+  node.dataset.irrelevant=String(irrelevant);
+  if(irrelevant)node.style.opacity='.48';
  });
  if(mainCurve){
   // Construct only visible, consecutive evidence segments, preserving actual coordinates.
   const path=[];
+  let previous=null;
   nodes.forEach((node,i)=>{
-   if(!visible[i]||!stages[i]?.reported){return}
+   // An irrelevant reported activity stays visible in All, near the baseline,
+   // but cannot become a peak or interruption in the earned validation path.
+   if(!visible[i]||!stages[i]?.reported||milestoneRelevance(state.plan.milestones[i]).score===0)return;
    const circle=node.querySelector('circle');
    if(!circle)return;
    const x=Number(circle.getAttribute('cx')),y=Number(circle.getAttribute('cy'));
-   const prev=i>0&&visible[i-1]&&stages[i-1]?.reported;
-   if(!prev)path.push('M'+x+' '+y);
-   else {
-    const prevCircle=nodes[i-1]?.querySelector('circle');
-    const px=Number(prevCircle.getAttribute('cx')),py=Number(prevCircle.getAttribute('cy'));
-    const mid=(px+x)/2;
-    path.push('C'+mid+' '+py+' '+mid+' '+y+' '+x+' '+y);
+   if(!previous)path.push('M'+x+' '+y);
+   else{
+    const mid=(previous.x+x)/2;
+    path.push('C'+mid+' '+previous.y+' '+mid+' '+y+' '+x+' '+y);
    }
+   previous={x,y};
   });
   mainCurve.setAttribute('d',path.join(' '));
  }
@@ -1087,7 +1098,8 @@ async function assessAndPlaceMilestone(data){
    }finally{clearTimeout(timer)}
   }catch(err){console.warn('AI assessment unavailable, using provisional assessment:',err)}
  }
- const direction=reported?decideMilestoneDirection(details+' '+evidence,ai&&typeof ai.score==='number'?ai.score:null):'none';
+ const preliminaryRelevance=milestoneRelevance({title,target:details,reported_evidence:reported?details:'',why:ai?.why||''});
+ const direction=reported&&preliminaryRelevance.score>0?decideMilestoneDirection(details+' '+evidence,ai&&typeof ai.score==='number'?ai.score:null):'none';
  const proposed={title,target:details,evidence:evidence||'',why:ai?.why||'Assessment based on the milestone description and venture context.',date:data.date||'',timeframe:data.date||'To be planned',status:reported?'In progress':'Not started',source:'user-entered',assessment_source:ai?'Gemini suggestion + provisional confidence':'Provisional rules',evidence_direction:direction};
  if(reported)proposed.reported_evidence=details;
  if(reported)proposed.evidence_confidence=estimateEvidenceConfidence(proposed,evidence,direction);
