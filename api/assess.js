@@ -98,7 +98,7 @@ async function generateGrowthRoutes(req,res){
       contents:[{role:'user',parts:[{text:JSON.stringify({venture:c,milestones,requested_count:count,route_id:id})}]}],
       generationConfig:{responseMimeType:'application/json',responseJsonSchema:schemaForRoute,maxOutputTokens:7200,thinkingConfig:{thinkingBudget:0}}
      }),
-     signal:AbortSignal.timeout(46000)
+     signal:AbortSignal.timeout(24000)
     });
     if(!response.ok){
      let reason='';
