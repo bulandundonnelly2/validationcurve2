@@ -1,3 +1,4 @@
+const { diagnoseRoute } = require('../route-engine.js');
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (process.env.GEMINI_ASSESSMENT_ENABLED !== 'true') return res.status(503).json({ error: 'AI assessment is not enabled yet.' });
@@ -116,9 +117,20 @@ async function generateGrowthRoutes(req,res){
     }
     if(!parsedOne.route||parsedOne.route.id!==id)throw new Error('Gemini returned incorrect route '+id);
     const grounding=assessRouteSpecificity(parsedOne.route,c,milestones);
-    if(grounding.ok)return parsedOne.route;
-    critique=grounding.reason;
-    console.warn('growth_route_specificity_retry',{route:id,attempt:attempt+1,reason:critique});
+    const diagnostic=diagnoseRoute(parsedOne.route);
+    if(grounding.ok&&diagnostic.matches){
+     parsedOne.route.shape_assessment={matches:true,reason:diagnostic.reason};
+     return parsedOne.route;
+    }
+    critique=[!grounding.ok?grounding.reason:null,!diagnostic.matches?diagnostic.reason:null].filter(Boolean).join(' Also: ');
+    console.warn('growth_route_quality_retry',{route:id,attempt:attempt+1,reason:critique});
+    // Do not falsify projections or impose a familiar shape after two tries.
+    // Preserve a venture-specific plan and disclose when its milestones do
+    // not justify the named growth trajectory.
+    if(attempt===1&&grounding.ok){
+     parsedOne.route.shape_assessment={matches:false,reason:diagnostic.reason};
+     return parsedOne.route;
+    }
    }
    throw new Error('Generated '+id+' milestones were too generic to use');
   }
@@ -155,7 +167,7 @@ async function generateGrowthRoutes(req,res){
     for(const k of ['title','objective','success_criteria','prerequisites','required_evidence','target_rationale','resources'])if(typeof step[k]!=='string'||!step[k].trim())throw Error('Incomplete step');
     return {title:step.title.slice(0,130),detail:step.objective.slice(0,450),success_criteria:step.success_criteria.slice(0,450),prerequisites:step.prerequisites.slice(0,300),evidence:step.required_evidence.slice(0,450),difficulty:step.difficulty,value:step.potential_value,target_value:target,months_from_start:step.months_from_start,status:step.status==='aspirational'?'aspirational':'planned',target_rationale:step.target_rationale.slice(0,350),resources:step.resources.slice(0,300)};
    });
-   routes.push({id,suitability:route.suitability,suitability_reason:String(route.suitability_reason).slice(0,600),changes_needed:String(route.changes_needed).slice(0,600),metric:String(route.metric).slice(0,110),metric_unit:String(route.metric_unit).slice(0,55),metric_type:route.metric_type,objectives_fit:String(route.objectives_fit).slice(0,450),primary_risk:String(route.primary_risk).slice(0,450),metric_baseline:Number(route.metric_baseline),metric_baseline_source:String(route.metric_baseline_source).slice(0,100),strategy:String(route.strategy).slice(0,550),steps,caveat:String(route.caveat).slice(0,350)});
+   routes.push({id,suitability:route.suitability,suitability_reason:String(route.suitability_reason).slice(0,600),changes_needed:String(route.changes_needed).slice(0,600),metric:String(route.metric).slice(0,110),metric_unit:String(route.metric_unit).slice(0,55),metric_type:route.metric_type,objectives_fit:String(route.objectives_fit).slice(0,450),primary_risk:String(route.primary_risk).slice(0,450),metric_baseline:Number(route.metric_baseline),metric_baseline_source:String(route.metric_baseline_source).slice(0,100),strategy:String(route.strategy).slice(0,550),steps,shape_assessment:route.shape_assessment||{matches:false,reason:'Unassessed route'},caveat:String(route.caveat).slice(0,350)});
   }
   return res.status(200).json({routes,recommended_route:parsed.recommended_route,recommendation_reason:String(parsed.recommendation_reason).slice(0,700),source:'AI-generated planning hypotheses; not evidence or a calibrated forecast'});
  }catch(e){
