@@ -861,6 +861,39 @@ function joinedRoutePath(points,id){
  }
  return d;
 }
+function plotIntelligentRoute(group,model,route,nodes,ns){
+ const steps=route.steps||[];if(!steps.length)return;
+ const startCircle=nodes[0]?.querySelector('circle');
+ const x0=startCircle?Number(startCircle.getAttribute('cx')):75;
+ const y0=Math.max(125,Math.min(170,startCircle?Number(startCircle.getAttribute('cy')):151));
+ const baseline=Number(route.metric_baseline)||0;
+ const total=Number(steps[steps.length-1].target_value)-baseline;
+ const pts=[[x0,y0],...steps.map((step,i)=>{
+  const proportion=total>0?Math.max(0,Math.min(1,(Number(step.target_value)-baseline)/total)):0;
+  return [x0+(1550-x0)*(i+1)/steps.length,y0-(y0-29)*proportion];
+ })];
+ const path=document.createElementNS(ns,'path');
+ path.setAttribute('class','reference-path named-route-path');
+ path.setAttribute('data-route-shape',model.id);
+ path.setAttribute('fill','none');path.setAttribute('stroke',model.color);
+ path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
+ path.setAttribute('d',joinedRoutePath(pts,model.id));
+ const title=document.createElementNS(ns,'title');
+ title.textContent=model.name+' · '+route.metric+' ('+route.metric_unit+'). Heights show percentage of this route target, not absolute comparable growth.';
+ path.appendChild(title);group.appendChild(path);
+ steps.forEach((step,i)=>{
+  const [x,y]=pts[i+1];
+  const g=document.createElementNS(ns,'g');g.setAttribute('tabindex','0');g.setAttribute('role','button');g.style.cursor='pointer';
+  g.setAttribute('aria-label',model.name+' checkpoint '+(i+1)+': '+step.title+', proposed target '+step.target_value+' '+route.metric_unit);
+  const hit=document.createElementNS(ns,'circle');hit.setAttribute('cx',x);hit.setAttribute('cy',y);hit.setAttribute('r',12);hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
+  const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r',6);dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width',2);
+  const tip=document.createElementNS(ns,'title');tip.textContent=step.title+' · Target '+step.target_value+' '+route.metric_unit+' · Success criteria: '+step.success_criteria+' · Evidence: '+step.evidence+' · Difficulty '+step.difficulty+'/5. Proposed, not achieved.';
+  g.append(hit,dot,tip);
+  const select=()=>openRouteGuidance(model.id,i);
+  g.addEventListener('click',select);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select()}});
+  group.appendChild(g);
+ });
+}
 function drawReferenceCurves(){
  const svg=$('#planView .map-chart svg'),chart=$('#planView .map-chart');
  if(!svg||!chart)return;
@@ -882,6 +915,8 @@ function drawReferenceCurves(){
  group.setAttribute('aria-label','Route milestones compared against reported business milestones');
  const models=referenceModels.filter(model=>selected.includes(model.id));
  models.forEach((model,routeIndex)=>{
+  const intelligence=tailoredRoute(model.id);
+  if(intelligence){plotIntelligentRoute(group,model,intelligence,nodes,ns);return}
   const routeStepsNow=selectRouteMilestones(model.id,snap);
   // Every strategic route is a full comparison journey, beginning at the
   // same first-business-milestone position as the real validation curve.
@@ -980,7 +1015,8 @@ function drawReferenceCurves(){
  if(selectedRoute){
   const model=referenceModels.find(m=>m.id===selectedRoute),steps=selectRouteMilestones(selectedRoute,snap);
   const tip=document.createElement('div');tip.className='route-guidance';
-  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(steps.length?esc(steps[0].title):'Next action: review your evidence')+' <button type="button" data-open-route>View route milestones ↗</button>';
+  const intelligent=tailoredRoute(selectedRoute);
+  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(intelligent?esc(intelligent.suitability+' suitability · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence'))+' <button type="button" data-open-route>View route milestones ↗</button>';
   chart.appendChild(tip);
   tip.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
  }
@@ -1034,10 +1070,12 @@ function openRouteGuidance(id,index){
  panel.innerHTML=
   '<div class="navigator-heading"><h3>'+esc(model.name)+' route</h3><button type="button" class="navigator-close" id="navClose">✕ Close</button></div>'
   +'<p class="navigator-intro">Selected checkpoint '+(selectedIndex+1)+' of '+steps.length+' · Proposed, not achieved</p>'
+  +(tailoredRoute(id)?'<section class="navigator-card"><div class="navigator-sub">SUITABILITY · '+esc(tailoredRoute(id).suitability.toUpperCase())+'</div><p>'+esc(tailoredRoute(id).suitability_reason)+'</p><p><b>Changes needed:</b> '+esc(tailoredRoute(id).changes_needed)+'</p><p><b>Strategy:</b> '+esc(tailoredRoute(id).strategy)+'</p><p><b>Metric:</b> '+esc(tailoredRoute(id).metric)+' · Baseline '+esc(tailoredRoute(id).metric_baseline)+' '+esc(tailoredRoute(id).metric_unit)+' ('+esc(tailoredRoute(id).metric_baseline_source)+')</p></section>':'')
   +'<section class="navigator-card route-specific-guidance" aria-label="Selected route milestone">'
   +'<div class="navigator-sub">SELECTED MILESTONE · '+(selectedIndex+1)+' / '+steps.length+'</div>'
   +'<h4>'+esc(chosen.title)+'</h4>'
   +'<p>'+esc(chosen.detail)+'</p>'
+  +(tailoredRoute(id)?'<p><b>Success criteria:</b> '+esc(chosen.success_criteria)+'</p><p><b>Prerequisites:</b> '+esc(chosen.prerequisites)+'</p><p><b>Resources:</b> '+esc(chosen.resources)+'</p><p><b>Target:</b> '+esc(chosen.target_value)+' '+esc(tailoredRoute(id).metric_unit)+'</p><p><b>Why that target:</b> '+esc(chosen.target_rationale)+'</p>':'')
   +'<p><b>Required evidence:</b> '+esc(chosen.evidence)+'</p>'
   +'<div class="navigator-tags"><span>Potential value '+chosen.value+'/5</span><span>Difficulty '+chosen.difficulty+'/5</span><span>Not verified</span></div>'
   +'<button type="button" id="addSelectedRouteMilestone">Add this milestone to curve</button>'
