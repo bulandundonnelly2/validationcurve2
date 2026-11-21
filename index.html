@@ -566,7 +566,7 @@ function setupReferenceControls(){
  const options=Object.keys(businessPathDefaults);
  toolbar.innerHTML='<span class="reference-intro">Routes</span><label>Business <select id="referenceBusinessType" aria-label="Business type">'+options.map(t=>'<option value="'+esc(t)+'"'+(t===state.comparisonBusinessType?' selected':'')+'>'+esc(t)+'</option>').join('')+'</select></label>'+referenceModels.map(model=>'<label title="'+esc(model.info)+'"><input type="checkbox" data-reference="'+model.id+'" '+(state.comparisonCurves.includes(model.id)?'checked':'')+'><span style="color:'+model.color+'">━ ━</span>'+esc(model.name)+'</label>').join('')+'<label class="route-count-label">Future milestones <select id="routeMilestoneCount" aria-label="Number of future milestones on each route">'+[3,4,5,6,7,8,9,10].map(n=>'<option value="'+n+'"'+(n===routeMilestoneCount()?' selected':'')+'>'+n+'</option>').join('')+'</select></label><button class="reference-help" id="referenceHelp" type="button" aria-expanded="false">About routes</button>';
  const explainer=document.createElement('div');explainer.className='reference-info';explainer.hidden=true;
- explainer.textContent='Each route now has a distinctive strategic shape: steady, hockey-stick, S-curve, step changes or long R&D. Coloured points describe what evidence would be needed at each stage. Shapes are illustrative, not company growth predictions or industry benchmarks.';
+ explainer.textContent='Each coloured checkpoint is a possible milestone. The route rises only under the assumption that its required evidence is achieved. Growth profiles distribute those conditional gains differently; they are not verified achievements or financial forecasts.';
  const workspace=chart.closest('.map-workspace');(workspace||chart).before(toolbar);toolbar.after(explainer);
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
   state.comparisonBusinessType=e.target.value;
@@ -707,6 +707,54 @@ function compareExpectedWithActual(expected,actual){
  const matches=Object.entries(concepts).filter(([key,re])=>re.test(goal)&&re.test(text)).map(([key])=>key);
  return matches.length?'Related activity reported — confirm the required evidence.':'No clear matching evidence in this milestone.';
 }
+// A route is a sequence of conditional validation gains, not a projected
+// business result. Each checkpoint is a hypothetical "if achieved" outcome.
+// Weights reflect the strategy's stage gates; value reflects the checkpoint's
+// significance. Difficulty is shown in guidance, never treated as evidence.
+function routeEvidenceWeight(id,stage,total,step){
+ const t=total<=1?1:stage/(total-1);
+ if(id==='hockey'){
+  // Most of the commercial acceleration follows repeatable acquisition and
+  // retention; early validation still contributes visible, smaller gains.
+  return .65+3.2*Math.pow(t,2.2);
+ }
+ if(id==='s')return .5+2.4*Math.exp(-Math.pow((t-.52)/.24,2));
+ if(id==='steps')return stage===0||stage===total-1||stage%3===2?2.4:.45;
+ if(id==='long')return .48+2.15*Math.pow(t,2);
+ return 1;
+}
+function routeAchievedLevels(id,historical,future,startY){
+ const all=[
+  ...historical.map(h=>({value:h.expected.value||2,step:h.expected,history:true})),
+  ...future.map(f=>({value:f.step.value||3,step:f.step,history:false}))
+ ];
+ // Reserve sufficient height for each genuine achievement and its context.
+ const weights=all.map((p,i)=>{
+  const significance=Math.max(0,Math.min(5,Number(p.value)||0));
+  const stageWeight=routeEvidenceWeight(id,i,all.length,p.step);
+  return significance===0?0:significance*(.55+stageWeight);
+ });
+ const total=weights.reduce((sum,w)=>sum+w,0)||1;
+ // Keep the end in the same fixed graph coordinate system across route toggles.
+ const available=Math.max(0,startY-28);
+ const gain=available/total;
+ let climbed=0;
+ return weights.map(w=>{
+  climbed+=w*gain;
+  return Math.max(26,startY-climbed);
+ });
+}
+function joinedRoutePath(points,id){
+ if(points.length<2)return '';
+ let d='M'+points[0][0].toFixed(1)+' '+points[0][1].toFixed(1);
+ for(let i=1;i<points.length;i++){
+  const prev=points[i-1],cur=points[i],mid=(prev[0]+cur[0])/2;
+  // Step-change businesses show successive plateaus and discrete jumps.
+  if(id==='steps')d+=' L'+mid.toFixed(1)+' '+prev[1].toFixed(1)+' L'+mid.toFixed(1)+' '+cur[1].toFixed(1)+' L'+cur[0].toFixed(1)+' '+cur[1].toFixed(1);
+  else d+=' C'+mid.toFixed(1)+' '+prev[1].toFixed(1)+' '+mid.toFixed(1)+' '+cur[1].toFixed(1)+' '+cur[0].toFixed(1)+' '+cur[1].toFixed(1);
+ }
+ return d;
+}
 function drawReferenceCurves(){
  const svg=$('#planView .map-chart svg'),chart=$('#planView .map-chart');
  if(!svg||!chart)return;
@@ -729,54 +777,36 @@ function drawReferenceCurves(){
  const models=referenceModels.filter(model=>selected.includes(model.id));
  models.forEach((model,routeIndex)=>{
   const routeStepsNow=selectRouteMilestones(model.id,snap);
-  // Give every named strategy its own legible visual signature while retaining
-  // concrete checkpoints from the uploaded business plan and route requirements.
-  // These are schematic validation sequences, NOT revenue forecasts or industry averages.
+  // Keep the real milestones in fixed positions. This alternative route is
+  // hypothetical: each step's vertical gain represents evidence that would
+  // be created IF the required milestone were independently demonstrated.
   const referenceStartX=reported[0]?.x??75;
   const referenceEndX=1550;
-  const routeOffsets={steady:-12,hockey:15,s:0,steps:9,long:23};
+  const routeOffsets={steady:-12,hockey:14,s:-3,steps:8,long:20};
   const firstY=reported[0]?.y??150;
-  const routeStartY=Math.max(115,Math.min(176,firstY+(routeOffsets[model.id]??0)));
-  const riseByRoute={steady:105,hockey:130,s:99,steps:105,long:109};
-  const rise=model.id==='hockey'?routeStartY-27:(riseByRoute[model.id]??105);
-  const routeAt=x=>{
-   const t=Math.max(0,Math.min(1,(x-referenceStartX)/(referenceEndX-referenceStartX)));
-   return Math.max(24,Math.min(180,routeStartY-rise*Math.max(0,Math.min(1,model.formula(t)))));
-  };
+  const routeStartY=Math.max(121,Math.min(172,firstY+(routeOffsets[model.id]??0)));
   const historical=reported.map((o,index)=>{
    const expected=expectedRouteMilestone(model.id,index,reported.length);
-   // Nudge checkpoint right of the actual milestone so both can be selected.
-   const x=o.x+16;
-   return {...o,x,y:routeAt(x),expected,actualX:o.x,actualY:o.y};
+   return {...o,x:o.x+16,expected,actualX:o.x,actualY:o.y};
   });
   const futureStartX=Math.max(anchorX+36,(historical.at(-1)?.x??referenceStartX)+23);
   const future=routeStepsNow.map((step,index)=>{
    const x=futureStartX+(referenceEndX-futureStartX)*(index+1)/Math.max(1,routeStepsNow.length);
-   return {x,y:routeAt(x),step,index};
+   return {x,step,index};
   });
-  // Sample each actual profile continuously. Step changes deliberately forms plateaus;
-  // hockey stick accelerates late; the S-curve rises sharply in the middle.
-  const profilePoints=Array.from({length:101},(_,i)=>{
-   const x=referenceStartX+(referenceEndX-referenceStartX)*i/100;
-   return [x,routeAt(x)];
-  });
+  const heights=routeAchievedLevels(model.id,historical,future,routeStartY);
+  historical.forEach((h,i)=>h.y=heights[i]);
+  future.forEach((f,i)=>f.y=heights[historical.length+i]);
+  const pathPoints=[[referenceStartX,routeStartY],...historical.map(h=>[h.x,h.y]),...future.map(f=>[f.x,f.y])];
   const path=document.createElementNS(ns,'path');
   path.setAttribute('class','reference-path named-route-path');
   path.setAttribute('data-route-shape',model.id);
   path.setAttribute('stroke',model.color);
   path.setAttribute('stroke-width','3');
-  path.setAttribute('d',profilePoints.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' '));
+  path.setAttribute('d',joinedRoutePath(pathPoints,model.id));
   const label=document.createElementNS(ns,'title');
-  label.textContent=model.name+' schematic trajectory with '+routeStepsNow.length+' proposed future milestones. Route shape is preserved independent of the checkpoint count; not a forecast.';
+  label.textContent=model.name+': '+routeStepsNow.length+' conditional validation checkpoints. Each rise requires achieving the named milestone; none of the future results is assumed or verified.';
   path.appendChild(label);group.appendChild(path);
-  if(model.id==='hockey'){
-   const kneeX=referenceStartX+(referenceEndX-referenceStartX)*.83;
-   const kneeY=routeAt(kneeX);
-   const guide=document.createElementNS(ns,'circle');guide.setAttribute('cx',kneeX);guide.setAttribute('cy',kneeY);
-   guide.setAttribute('r','4.4');guide.setAttribute('stroke',model.color);guide.setAttribute('fill','#103c30');guide.setAttribute('stroke-width','2');
-   const kneeTitle=document.createElementNS(ns,'title');kneeTitle.textContent='Inflection point: proposed transition from validation groundwork to repeatable rapid growth (not a prediction)';
-   guide.appendChild(kneeTitle);group.appendChild(guide);
-  }
   historical.forEach(o=>{
    const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
    marker.setAttribute('aria-label',model.name+' at '+o.milestone.title+': expected '+o.expected.title);
@@ -785,7 +815,7 @@ function drawReferenceCurves(){
    hit.setAttribute('r','11');hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
    const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',o.x);dot.setAttribute('cy',o.y);
    dot.setAttribute('r','5.5');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#16382c');dot.setAttribute('stroke-width','1.4');
-   const tt=document.createElementNS(ns,'title');tt.textContent='On '+model.name+': '+o.expected.example+' | Difficulty '+o.expected.difficulty+'/5. Evidence: '+o.expected.evidence;
+   const tt=document.createElementNS(ns,'title');tt.textContent='IF ACHIEVED on '+model.name+': '+o.expected.example+' | Difficulty '+o.expected.difficulty+'/5. Required evidence: '+o.expected.evidence;
    marker.append(hit,dot,tt);
    marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
    marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
