@@ -167,7 +167,7 @@ test('Submitting a documented result scores actual outcome and replaces provisio
 test('Pending achieved experiments receive muted solid connectors instead of a drop to baseline',()=>{
  assert.match(html,/pendingSegments\.push/);
  assert.match(html,/pendingPaths/);
- assert.match(html,/Not validated: achieved status but outcome assessment pending/);
+ assert.match(html,/Achieved milestone · visually connected/);
  assert.match(html,/Achieved · awaiting outcome assessment/);
 });
 
@@ -386,4 +386,33 @@ test('Manual override UI has score validation, reason, reset and automatic compa
  assert.match(html,/Edit milestone \/ score/);
  assert.match(html,/data-automatic-impact/);
  assert.match(html,/USER-ADJUSTED/);
+});
+
+test('Achieved milestone circles are complete even when evidence is pending',()=>{
+ const points=sourceBetween('const pointMarkup=points.map', "box.innerHTML='<div class=\"milestone-map\">");
+ assert.match(points,/const inner=impact\.achieved\?color/);
+ assert.match(points,/const innerOpacity=impact\.achieved\?'1'/);
+ assert.match(points,/const strokeDash=impact\.achieved\?'':'stroke-dasharray="3 6"'/);
+ assert.match(points,/impact\.achieved\?'#9bc6a7'/);
+});
+test('Achieved incoming connectors are solid regardless of earlier forecasts',()=>{
+ const graph=sourceBetween('const actualSegments=[]', 'const pointMarkup=points.map');
+ assert.match(graph,/else if\(impact\.achieved\)/);
+ assert.match(graph,/pendingSegments\.push\(\{d:path/);
+ assert.match(graph,/stroke="#b2c1b8" stroke-opacity="\.85" stroke-width="3\.2"/);
+ assert.doesNotMatch(graph,/stroke-dasharray="3 7"/);
+});
+test('Provisional route overlay never paints a dashed line over an achieved segment',()=>{
+ const journey=sourceBetween('function applyJourneyMode(){','/* Milestone assessment uses');
+ assert.match(journey,/reported:normalizedMilestoneStatus\(m\)==='Achieved'/);
+ assert.match(journey,/if\(previousValid&&!current\.reported\)/);
+});
+test('Visual completion does not fabricate an assessed result or change the scoring formula',()=>{
+ const plan=sourceBetween('function milestoneImpact(', 'function contextualMilestoneValue(');
+ assert.match(plan,/const actualEligible=status==='Achieved'&&hasObservation/);
+ assert.match(plan,/const pendingEvidence=status==='Achieved'&&eligible&&!hasScoredOutcome/);
+ const statusOnly=score.milestoneImpact({title:'Decision quality field test',status:'Achieved'},4,'none');
+ assert.equal(statusOnly.value,0);
+ assert.equal(statusOnly.hasScoredOutcome,false);
+ assert.equal(statusOnly.pendingEvidence,true);
 });
