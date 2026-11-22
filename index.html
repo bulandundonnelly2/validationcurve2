@@ -698,6 +698,11 @@ function renderPlan(){document.querySelector('#planView .map-chart')?.dispatchEv
   const priorDisplayed=i?projectedValues[i-1]:0;
   if(impact.hasScoredOutcome&&Math.abs(priorActual-priorDisplayed)<.000001){
    actualSegments.push({d:path,color:impact.actualBand.color});
+  }else if(impact.achieved){
+   // Achieved status closes the connection visually even if this displayed
+   // position still includes unverified forecasts. Actual validation remains
+   // on its separate evidence-only ledger, unchanged.
+   pendingSegments.push({d:path,color:impact.projectedBand.color});
   }else if(impact.pendingEvidence){
    pendingSegments.push({d:path,color:impact.projectedBand.color});
   }else{
@@ -721,17 +726,17 @@ function renderPlan(){document.querySelector('#planView .map-chart')?.dispatchEv
   return path;
  }).join(''):'';
  const actualPaths=actualSegments.map(p=>'<path d="'+p.d+'" fill="none" stroke="'+p.color+'" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>').join('');
- const pendingPaths=pendingSegments.map(p=>'<path d="'+p.d+'" fill="none" stroke="#b2c1b8" stroke-opacity=".46" stroke-width="2.1" stroke-dasharray="3 7" stroke-linecap="round" stroke-linejoin="round"><title>Not validated: achieved status but outcome assessment pending.</title></path>').join('');
+ const pendingPaths=pendingSegments.map(p=>'<path d="'+p.d+'" fill="none" stroke="#b2c1b8" stroke-opacity=".85" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><title>Achieved milestone · visually connected. Actual validation remains evidence-based and separately tracked.</title></path>').join('');
  const futurePaths=forecastSegments.map(p=>'<path d="'+p.d+'" fill="none" stroke="#b2c1b8" stroke-opacity=".46" stroke-width="2.1" stroke-dasharray="'+(p.status==='In progress'?'2 7':'6 9')+'" stroke-linecap="round" stroke-linejoin="round"><title>Illustrative forecast, not verified validation.</title></path>').join('');
  const pointMarkup=points.map((p,i)=>{
   const impact=milestoneImpacts[i],achieved=impact.achieved,band=impact.hasScoredOutcome?impact.actualBand:impact.projectedBand;
-  const color=impact.hasScoredOutcome?(impact.kind==='irrelevant'?VALIDATION_IMPACT_COLORS.neutral:band.color):'#b2c1b8';
+  const color=impact.hasScoredOutcome?(impact.kind==='irrelevant'?VALIDATION_IMPACT_COLORS.neutral:band.color):impact.achieved?'#9bc6a7':'#b2c1b8';
   const value=Math.abs(impact.hasScoredOutcome?impact.value:impact.projected);
   const radius=Math.max(9,Math.min(23,9+value*1.8));
   const ring=impact.transformative?'<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(radius+7)+'" fill="none" stroke="#e8c76f" stroke-opacity=".95" stroke-width="2.5"/>':'';
-  const inner=impact.hasScoredOutcome?color:'#153a2d';
-  const innerOpacity=impact.hasScoredOutcome?'1':'.5';
-  const strokeDash=impact.hasScoredOutcome?'':'stroke-dasharray="3 6"';
+  const inner=impact.achieved?color:'#153a2d';
+  const innerOpacity=impact.achieved?'1':'.5';
+  const strokeDash=impact.achieved?'':'stroke-dasharray="3 6"';
   return '<g data-plan-point="'+i+'" data-signal-score="'+projectedValues[i]+'" role="button" tabindex="0" aria-label="View milestone '+(i+1)+': '+esc(plan.milestones[i].title)+'" style="cursor:pointer">'+
    '<title>'+esc(evidenceDescription(i))+'</title>'+
    '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(radius+8)+'" fill="'+color+'" opacity=".10"/>'+ring+
