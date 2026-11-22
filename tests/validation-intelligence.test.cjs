@@ -281,3 +281,21 @@ test('Graph initially fits after layout and observes container resize',()=>{
  assert.match(html,/if\(chart\.clientWidth<=0\|\|chart\.clientHeight<=0\)return/);
  assert.match(html,/curve-layout-dispose/);
 });
+
+test('All reference routes start at the shared graph zero, not the most recent milestone',()=>{
+ const overlay=sourceBetween('function plotSharedSignalRoute(', 'function drawReferenceCurves(');
+ assert.match(overlay,/const startX=78;/);
+ assert.match(overlay,/const startY=sharedSignalY\(0,svg\)/);
+ assert.match(overlay,/let score=0;/);
+ assert.match(overlay,/const pts=\[\[startX,startY\]\]/);
+ assert.doesNotMatch(overlay,/lastNode|startScore|dataset\.signalScore/);
+ const renderer=sourceBetween('function drawReferenceCurves(', 'function openHistoricalComparison(');
+ assert.match(renderer,/Independent growth routes starting at zero/);
+ assert.doesNotMatch(renderer,/anchorX|anchorY|last=reported/);
+});
+test('Shared chart axis includes projected zero-origin route scores without adding current validation',()=>{
+ const frame=sourceBetween('function renderPlan(){', 'function milestoneRemovalRecommendation(');
+ const routeSection=frame.slice(frame.indexOf('const routeScores='));
+ assert.match(routeSection,/return changes\?\.length===steps\.length\?changes\.reduce/);
+ assert.doesNotMatch(routeSection.slice(0,460),/anchorScore|projectedValues\.at\(-1\)/);
+});
