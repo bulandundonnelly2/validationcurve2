@@ -84,6 +84,25 @@
   }
   return {matches,reason:matches?'Route profile reflects its stated strategy':reason,velocity,gains,total,early,late,nearZero};
  }
+
+ // Conditional route overlays use the measured changes between proposed
+ // cumulative targets, not a fixed increment per checkpoint. All values are
+ // RELATIVE validation illustration units, never observed evidence or a
+ // probability of reaching the target.
+ function routeValidationDeltas(route){
+  if(!validRoute(route))return [];
+  const base=Number(route.metric_baseline);
+  const targets=route.steps.map(s=>Number(s.target_value));
+  const gains=targets.map((target,i)=>Math.max(0,target-(i?targets[i-1]:base)));
+  const total=gains.reduce((a,b)=>a+b,0);
+  if(total<=0)return gains.map(()=>0);
+  // Potential sets the modest illustrative envelope; milestone target changes
+  // distribute it across the chronology. Plateaus remain perfectly flat.
+  const potential=route.steps.reduce((sum,step)=>
+   sum+Math.min(5,Math.max(0,Number(step.value??step.potential_value??3)||0))*.16,0);
+  const envelope=Math.min(7.5,potential);
+  return gains.map(g=>Number((envelope*g/total).toFixed(6)));
+ }
  function inspectRouteShapes(routes){
   const output={};
   for(const route of routes){
@@ -93,5 +112,5 @@
   }
   return output;
  }
- return {ROUTES,validRoute,layout,inspectRouteShapes,sharedComparisonMax,diagnoseRoute};
+ return {ROUTES,validRoute,layout,inspectRouteShapes,sharedComparisonMax,diagnoseRoute,routeValidationDeltas};
 });

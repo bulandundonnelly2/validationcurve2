@@ -603,8 +603,10 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
  const anchorScore=projectedValues.at(-1)||0;
  const routeIds=Array.isArray(state.comparisonCurves)?state.comparisonCurves:[];
  const routeScores=referenceModels.filter(model=>routeIds.includes(model.id)).map(model=>{
-  const steps=routeComparisonSteps(model.id,routeSnapshot());
-  return anchorScore+steps.reduce((sum,step)=>sum+Math.min(1.8,routeSignalGain(step)*1.8),0);
+  const generated=tailoredRoute(model.id),steps=routeComparisonSteps(model.id,routeSnapshot());
+  const changes=generated&&window.ValidationRouteEngine?.routeValidationDeltas(generated);
+  return anchorScore+(changes?.length===steps.length?changes.reduce((sum,gain)=>sum+gain,0):
+   steps.reduce((sum,step)=>sum+Math.min(1.8,routeSignalGain(step)*1.8),0));
  });
  const axisMin=Math.min(-2,Math.floor(Math.min(0,...plotValues,...projectedValues)));
  const axisMax=Math.max(5,Math.ceil(Math.max(0,...plotValues,...projectedValues,...routeScores)));
@@ -1829,8 +1831,14 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  const duration=dated?Math.max(1,Number(steps.at(-1).months_from_start)):steps.length;
  const pts=[[startX,startY]];
  const projected=[];
+ // AI-generated routes have numeric cumulative targets. Their individual
+ // changes determine the line geometry; generic value-based gains are used
+ // only for fallback routes that have no measured targets.
+ const measured=route&&window.ValidationRouteEngine?.routeValidationDeltas(route);
+ const routeDeltas=measured?.length===steps.length?measured:null;
  steps.forEach((step,i)=>{
-  score=Number((score+Math.min(1.8,routeSignalGain(step)*1.8)).toFixed(6));
+  const change=routeDeltas?routeDeltas[i]:Math.min(1.8,routeSignalGain(step)*1.8);
+  score=Number((score+change).toFixed(6));
   const progress=dated?Number(step.months_from_start)/duration:(i+1)/steps.length;
   const x=startX+(1550-startX)*Math.max(0,Math.min(1,progress));
   projected.push({step,i,x,y:sharedSignalY(score,svg),score});
@@ -1862,7 +1870,7 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
   dot.setAttribute('r','6');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width','2');
   const tip=document.createElementNS(ns,'title');
   tip.textContent=step.title+' · Conditional projected cumulative impact '+score.toFixed(2)+' relative units · Potential value '+
-   routePotentialValue(step).toFixed(1)+'/5 · Unverified proposed milestone. '+shape.reason;
+   routePotentialValue(step).toFixed(1)+'/5 · Proposed target '+(routeDeltas?'change '+routeDeltas[i].toFixed(2)+' illustrative units · ':'not independently assessed · ')+'Unverified proposed milestone. '+shape.reason;
   marker.append(hit,dot,tip);
   const select=()=>openRouteGuidance(model.id,i);
   marker.addEventListener('click',select);
