@@ -714,22 +714,18 @@ function renderPlan(){document.querySelector('#planView .map-chart')?.dispatchEv
   }
   previous=end;
  }
- // Draw only the evidence-ledger portions that actually differ from the
- // displayed journey. Never extend a horizontal "actual" tail through
- // future milestones or paint a duplicate line over an achieved connector.
+ // Actual-only path is used exclusively in the Evidence view, so there
+ // is no overlapping second line in All. Stop at the last assessed change;
+ // do not extend a flat tail across planned future milestones.
  let actualPrev=[78,scoreY(0)];
  const lastScoredIndex=milestoneImpacts.reduce((last,impact,i)=>
   impact.hasScoredOutcome&&impact.value!==0?i:last,-1);
  const hasVerifiedMovement=lastScoredIndex>=0;
  const actualLedgerPaths=hasVerifiedMovement?points.slice(0,lastScoredIndex+1).map((p,i)=>{
   const end=[p[0],scoreY(plotValues[i])];
-  const startActual=i?plotValues[i-1]:0;
-  const startDisplayed=i?projectedValues[i-1]:0;
-  const sameAsJourney=Math.abs(startActual-startDisplayed)<.000001&&
-   Math.abs(plotValues[i]-projectedValues[i])<.000001;
   const impact=milestoneImpacts[i];
   const color=impact.hasScoredOutcome?impact.actualBand.color:'#87a69a';
-  const path=sameAsJourney?'':'<path d="'+segment(actualPrev,end)+'" fill="none" stroke="'+color+'" stroke-opacity="'+(impact.hasScoredOutcome?'.82':'.38')+'" stroke-width="'+(impact.hasScoredOutcome?'2.5':'1.6')+'" stroke-linecap="round" stroke-linejoin="round"><title>Actual validation only. Cumulative score '+fmtScore(plotValues[i])+'; excludes proposed milestones.</title></path>';
+  const path='<path d="'+segment(actualPrev,end)+'" fill="none" stroke="'+color+'" stroke-opacity="'+(impact.hasScoredOutcome?'.92':'.5')+'" stroke-width="'+(impact.hasScoredOutcome?'3.5':'1.8')+'" stroke-linecap="round" stroke-linejoin="round"><title>Actual validation only. Cumulative score '+fmtScore(plotValues[i])+'; excludes proposed milestones.</title></path>';
   actualPrev=end;
   return path;
  }).join(''):'';
