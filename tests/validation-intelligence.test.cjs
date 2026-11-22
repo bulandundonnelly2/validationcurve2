@@ -116,7 +116,7 @@ test('Graph uses outcome colours, node magnitude and stage-specific connector st
  assert.match(html,/Math\.max\(9,Math\.min\(23,9\+value\*1\.8\)\)/);
  assert.match(html,/impact\.transformative\?'<circle/);
  assert.match(html,/p\.status==='In progress'\?'2 7':'9 7'/);
- assert.match(html,/actualPaths\+futurePaths\+pointMarkup/);
+ assert.match(html,/actualPaths\+pendingPaths\+futurePaths\+pointMarkup/);
 });
 test('Five route families remain available without changing achieved scores',()=>{
  for(const id of ["'steady'","'hockey'","'s'","'steps'","'long'"]){
@@ -132,4 +132,41 @@ test('Milestone edit, evidence attachment and delete actions remain accessible',
  assert.match(html,/directEditor\.onsubmit=async/);
  assert.match(html,/deleteMilestone\.onclick/);
  assert.match(html,/quickEdit\.onclick/);
+});
+
+test('Experiment marked Achieved without observed result stays at forecast height, not zero',()=>{
+ const planned={title:'Experiment: repeat customer trial',status:'Not started'};
+ const before=score.milestoneImpact(planned,4,'none');
+ const prior=[{value:1.2,achieved:true,hasScoredOutcome:true,projected:0}];
+ const beforeActual=score.cumulativeMilestonePositions([...prior,before]);
+ const beforeProjected=score.projectedMilestonePositions([...prior,before],beforeActual);
+ const after=score.milestoneImpact({...planned,status:'Achieved'},4,'none');
+ const afterActual=score.cumulativeMilestonePositions([...prior,after]);
+ const afterProjected=score.projectedMilestonePositions([...prior,after],afterActual);
+ assert.equal(after.achieved,true);
+ assert.equal(after.hasScoredOutcome,false);
+ assert.equal(after.pendingEvidence,true);
+ assert.equal(after.value,0);
+ assert.equal(afterActual[1],1.2);
+ assert.equal(afterProjected[1],beforeProjected[1]);
+ assert.ok(afterProjected[1]>afterActual[1]);
+});
+test('Submitting a documented result scores actual outcome and replaces provisional position',()=>{
+ const milestone={title:'Experiment: repeat customer trial',status:'Achieved',
+  reported_evidence:'Customers paid for a repeat trial',
+  evidence_direction:'positive',testQuality:{score:70,confidence:.70,band:'Documented'}};
+ const after=score.milestoneImpact(milestone,4,'positive');
+ assert.equal(after.pendingEvidence,false);
+ assert.equal(after.hasScoredOutcome,true);
+ assert.ok(after.value>0);
+ const history=[{value:1.2,achieved:true,hasScoredOutcome:true,projected:0},after];
+ const actual=score.cumulativeMilestonePositions(history);
+ const predicted=score.projectedMilestonePositions(history,actual);
+ assert.equal(predicted[1],actual[1]);
+});
+test('Pending achieved experiments receive muted solid connectors instead of a drop to baseline',()=>{
+ assert.match(html,/pendingSegments\.push/);
+ assert.match(html,/pendingPaths/);
+ assert.match(html,/impact\.pendingEvidence\?'\.65'/);
+ assert.match(html,/Achieved · awaiting outcome assessment/);
 });
