@@ -760,7 +760,25 @@ function hockeyStickRoadmap(snapshot){
 let routeRequestInFlight=null;
 function growthRouteSignature(){
  const plan=state.plan||{};
- return JSON.stringify({model:'milestone-targets-v6-full-width-route-shape',business:plan.fromDocument?inferredBusinessType():(state.comparisonBusinessType||inferredBusinessType()),context:assessmentContext(),ventureIdentity:plan.ventureIdentity||null,count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30))});
+ return JSON.stringify({model:'milestone-targets-v7-sector-research-fit',business:plan.fromDocument?inferredBusinessType():(state.comparisonBusinessType||inferredBusinessType()),context:assessmentContext(),ventureIdentity:plan.ventureIdentity||null,count:routeMilestoneCount(),milestones:(plan.milestones||[]).map(m=>[m.title,m.target,m.reported_evidence,m.evidence,m.status,m.evidence_direction]),evidence:(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo).map(e=>[e.id,e.title,e.linkedMilestone,e.note,e.category,e.date,e.rating]).slice(-30))});
+}
+
+// Independent compatibility gate for cached and freshly generated routes.
+// A software product can be R&D-intensive, but only if the venture actually
+// documents novel research / core technical feasibility or regulated trials.
+function effectiveRouteFit(id,route){
+ const context=planVentureContext(),business=(state.comparisonBusinessType||inferredBusinessType());
+ const words=[context.ventureType,context.description,state.plan?.summary,...(state.plan?.milestones||[]).map(m=>[m.title,m.assumption,m.target,m.reported_evidence].join(' '))].join(' ').toLowerCase();
+ const clearlyResearch=/\b(proprietary (?:ai |ml |machine learning )?model|train(?:ing)? (?:a |our |new |novel )?(?:ai|ml|machine learning|predictive) model|develop(?:ing)? (?:a |our )?(?:novel|original) algorithm|clinical trial|medical device|drug discovery|scientific breakthrough|original research|fundamental research|novel (?:ai|machine learning) research|regulatory approval for (?:medical|clinical)|laboratory validation)\b/.test(words);
+ const saas=business==='Software / SaaS';
+ const longResearch=id==='long';
+ if(saas&&longResearch&&!clearlyResearch){
+  return {suitability:'low',label:'Not suitable currently',
+   reason:'This SaaS venture has no documented dependency on original scientific research, proprietary model training, or regulatory trials. Building and improving standard software is not a Long R&D growth strategy.',
+   changes:'To pursue Long R&D, establish a genuine research dependency with a technical hypothesis, experimental benchmark and funded programme. Otherwise, focus on problem validation, paid adoption and retention.',
+   metricWarning:route&&/model precision|model accuracy|scientific readiness|technical readiness/i.test(route.metric||'')};
+ }
+ return {suitability:route?.suitability||'unknown',label:route?.suitability==='low'?'Low suitability':route?.suitability==='high'?'High suitability':'Moderate suitability',reason:route?.suitability_reason||'Route fit is pending an assessment.',changes:route?.changes_needed||''};
 }
 function tailoredRoute(id){
  const cache=state.growthRouteCache;
@@ -1160,7 +1178,8 @@ function plotIntelligentRoute(group,model,route,nodes,ns){
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- title.textContent=model.name+' · '+route.metric+' ('+route.metric_unit+'). '+(route.shape_assessment?.matches===false?'Caution: the proposed milestones do not yet support this named trajectory. '+route.shape_assessment.reason+'. ':'')+'Horizontal: percentage of this route duration ('+months+' months total). Vertical: percentage of its proposed cumulative target. Select a point to see actual target and month; relative curves are not comparable forecasts.';
+ const fit=effectiveRouteFit(model.id,route);
+ title.textContent=(fit.suitability==='low'?'NOT SUITABLE CURRENTLY: '+fit.reason+'. ':'')+model.name+' · '+route.metric+' ('+route.metric_unit+'). '+(route.shape_assessment?.matches===false?'Caution: the proposed milestones do not yet support this named trajectory. '+route.shape_assessment.reason+'. ':'')+'Horizontal: percentage of this route duration ('+months+' months total). Vertical: percentage of its proposed cumulative target. Select a point to see actual target and month; relative curves are not comparable forecasts.';
  path.appendChild(title);group.appendChild(path);
  steps.forEach((step,i)=>{
   const [x,y]=pts[i+1];
@@ -1298,7 +1317,8 @@ function drawReferenceCurves(){
   const model=referenceModels.find(m=>m.id===selectedRoute),steps=selectRouteMilestones(selectedRoute,snap);
   const tip=document.createElement('div');tip.className='route-guidance';
   const intelligent=tailoredRoute(selectedRoute);
-  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(intelligent?esc(intelligent.suitability+' suitability · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence'))+' <button type="button" data-open-route>View route milestones ↗</button>';
+  const fit=effectiveRouteFit(selectedRoute,intelligent);
+  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(fit.suitability==='low'?'<b style="color:#ffc4a0">NOT SUITABLE CURRENTLY</b> · '+esc(shortRouteText(fit.reason,105)):(intelligent?esc(fit.label+' · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence')))+' <button type="button" data-open-route>View route milestones ↗</button>';
   chart.appendChild(tip);
   tip.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
  }
@@ -1360,16 +1380,18 @@ function openRouteGuidance(id,index){
   '<div class="navigator-heading"><h3>'+esc(model.name)+' route</h3><button type="button" class="navigator-close" id="navClose">✕ Close</button></div>'
   +'<p class="navigator-intro">Selected checkpoint '+(selectedIndex+1)+' of '+steps.length+' · '+esc(chosen.status||'Proposed')+', not achieved</p>'
   +(tailoredRoute(id)?(()=>{
-    const r=tailoredRoute(id),recommended=state.growthRouteCache?.recommended_route===id;
+    const r=tailoredRoute(id),fit=effectiveRouteFit(id,r),recommended=state.growthRouteCache?.recommended_route===id&&fit.suitability!=='low';
     return '<section class="navigator-card route-fit-compact">'
-      +'<div class="route-fit-line"><strong>'+esc(r.suitability.toUpperCase())+' SUITABILITY</strong>'+(recommended?'<span>Recommended</span>':'')+'</div>'
-      +'<p>'+esc(shortRouteText(r.objectives_fit||r.suitability_reason,170))+'</p>'
+      +'<div class="route-fit-line"><strong>'+esc(fit.suitability==='low'?'NOT SUITABLE CURRENTLY':fit.label.toUpperCase())+'</strong>'+(recommended?'<span>Recommended</span>':'')+'</div>'
+      +'<p>'+esc(shortRouteText(fit.reason,200))+'</p>'
+      +(fit.suitability==='low'?'<p><b>What would need to change:</b> '+esc(shortRouteText(fit.changes,240))+'</p>':'')
+      +(fit.metricWarning?'<p><b>Metric warning:</b> '+esc(r.metric)+' is not supported by the documented SaaS product. These targets are hypothetical and should be reassessed.</p>':'')
       +(r.shape_assessment?.matches===false?'<p class="route-shape-warning"><b>Shape not yet justified:</b> '+esc(shortRouteText(r.shape_assessment.reason,190))+'</p>':'')
-      +'<div class="route-fit-metric"><b>Metric:</b> '+esc(r.metric)+' · '+esc(r.metric_unit)+'</div>'
+      +'<div class="route-fit-metric"><b>Metric:</b> '+esc(r.metric)+' · '+esc(r.metric_unit)+(fit.metricWarning?' (unsupported for this venture)':'')+'</div>'
       +'<details><summary>Why this route? · Full assessment</summary>'
-      +'<p><b>Fit:</b> '+esc(r.suitability_reason)+'</p>'
+      +'<p><b>Fit:</b> '+esc(fit.reason)+'</p>'
       +'<p><b>Objectives:</b> '+esc(r.objectives_fit)+'</p>'
-      +'<p><b>Changes needed:</b> '+esc(r.changes_needed)+'</p>'
+      +'<p><b>Changes needed:</b> '+esc(fit.changes)+'</p>'
       +'<p><b>Strategy:</b> '+esc(r.strategy)+'</p>'
       +'<p><b>Main risk:</b> '+esc(r.primary_risk||'Not specified')+'</p>'
       +'<p><b>Baseline:</b> '+esc(r.metric_baseline)+' '+esc(r.metric_unit)+' · '+esc(r.metric_baseline_source)+'</p>'
