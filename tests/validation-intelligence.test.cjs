@@ -416,3 +416,24 @@ test('Visual completion does not fabricate an assessed result or change the scor
  assert.equal(statusOnly.hasScoredOutcome,false);
  assert.equal(statusOnly.pendingEvidence,true);
 });
+
+test('Actual ledger stops at last evidenced scoring event, not the future milestone tail',()=>{
+ const src=sourceBetween('let actualPrev=[78,scoreY(0)]','const actualPaths=actualSegments.map');
+ assert.match(src,/const lastScoredIndex=milestoneImpacts\.reduce/);
+ assert.match(src,/impact\.hasScoredOutcome&&impact\.value!==0\?i:last,-1/);
+ assert.match(src,/points\.slice\(0,lastScoredIndex\+1\)/);
+ assert.doesNotMatch(src,/points\.map\(\(p,i\)=>/);
+});
+test('Actual ledger avoids double-rendering an identical achieved segment',()=>{
+ const src=sourceBetween('let actualPrev=[78,scoreY(0)]','const actualPaths=actualSegments.map');
+ assert.match(src,/const sameAsJourney=Math\.abs\(startActual-startDisplayed\)/);
+ assert.match(src,/Math\.abs\(plotValues\[i\]-projectedValues\[i\]\)/);
+ assert.match(src,/sameAsJourney\?'':/);
+ assert.match(src,/actualPrev=end/);
+});
+test('Display still uses achieved solid connectors and independent forecast values',()=>{
+ const graph=sourceBetween('const actualSegments=[]','const pointMarkup=points.map');
+ assert.match(graph,/else if\(impact\.achieved\)/);
+ assert.match(graph,/const path=segment\(previous,end\)/);
+ assert.match(html,/const projectedValues=projectedMilestonePositions\(milestoneImpacts,plotValues\)/);
+});
