@@ -115,7 +115,7 @@ test('Graph uses outcome colours, node magnitude and stage-specific connector st
  assert.match(html,/VALIDATION_IMPACT_COLORS/);
  assert.match(html,/Math\.max\(9,Math\.min\(23,9\+value\*1\.8\)\)/);
  assert.match(html,/impact\.transformative\?'<circle/);
- assert.match(html,/p\.status==='In progress'\?'2 7':'9 7'/);
+ assert.match(html,/p\.status==='In progress'\?'2 7':'6 9'/);
  assert.match(html,/actualPaths\+pendingPaths\+futurePaths\+pointMarkup/);
 });
 test('Five route families remain available without changing achieved scores',()=>{
@@ -167,7 +167,7 @@ test('Submitting a documented result scores actual outcome and replaces provisio
 test('Pending achieved experiments receive muted solid connectors instead of a drop to baseline',()=>{
  assert.match(html,/pendingSegments\.push/);
  assert.match(html,/pendingPaths/);
- assert.match(html,/impact\.pendingEvidence\?'\.65'/);
+ assert.match(html,/Not validated: achieved status but outcome assessment pending/);
  assert.match(html,/Achieved · awaiting outcome assessment/);
 });
 
@@ -298,4 +298,40 @@ test('Shared chart axis includes projected zero-origin route scores without addi
  const routeSection=frame.slice(frame.indexOf('const routeScores='));
  assert.match(routeSection,/return changes\?\.length===steps\.length\?changes\.reduce/);
  assert.doesNotMatch(routeSection.slice(0,460),/anchorScore|projectedValues\.at\(-1\)/);
+});
+
+test('Investor conversations are not treated like an investment breakthrough',()=>{
+ const m={title:'Spoke with 3 VC investors',status:'Not started',value_assessment:{relevance:1}};
+ const planned=score.milestoneImpact(m,5,'none');
+ assert.equal(planned.value,0);
+ assert.ok(planned.projected>=0&&planned.projected<=.15,'Unverified VC meeting forecast is capped');
+ assert.equal(planned.activityCeiling?.actual,.2);
+ const assessed=score.milestoneImpact({...m,status:'Achieved',reported_evidence:'Three investors attended the meeting',testQuality:{score:85,confidence:.85,band:'Documented'}},5,'positive');
+ assert.ok(assessed.value<=.2,'Documented conversation remains an activity, not capital or traction');
+ assert.equal(assessed.transformative,false);
+});
+test('Investor due diligence, term sheet and committed funding have different score ceilings',()=>{
+ const strong={status:'Achieved',reported_evidence:'The relevant event was completed',testQuality:{score:85,confidence:.85,band:'Documented'}};
+ const diligence=score.milestoneImpact({...strong,title:'Investor requested due diligence'},5,'positive');
+ const termSheet=score.milestoneImpact({...strong,title:'Signed a term sheet'},5,'positive');
+ const funded=score.milestoneImpact({...strong,title:'Secured $1 million in investment',reported_evidence:'Received $1 million investment',evidence_source_type:'independent',evidence_source_url:'https://example.org/financing'},5,'positive');
+ assert.ok(diligence.value<=.8);
+ assert.ok(termSheet.value<=2);
+ assert.ok(funded.value>termSheet.value,'Completed major financing outranks interest and terms');
+});
+test('Paid customers and negative field trial outcomes retain meaningful signed validation',()=>{
+ const observed={status:'Achieved',reported_evidence:'Customers paid',testQuality:{score:85,confidence:.85,band:'Documented'}};
+ const paid=score.milestoneImpact({...observed,title:'50 paying customers'},5,'positive');
+ const negative=score.milestoneImpact({...observed,title:'Field trial failed',reported_evidence:'Devices failed repeatedly'},4,'negative');
+ assert.ok(paid.value>1,'Commercial outcomes are not capped as networking');
+ assert.ok(negative.value<0,'Real negative evidence creates a setback');
+});
+test('Forecast is muted grey dashed while the actual ledger is separate',()=>{
+ assert.match(html,/stroke="#b2c1b8" stroke-opacity="\.46"/);
+ assert.match(html,/const actualLedgerPaths=/);
+ assert.match(html,/scoreY\(plotValues\[i\]\)/);
+ assert.match(html,/Actual validated /);
+ assert.match(html,/Unverified scenario /);
+ assert.match(html,/Activity ceilings:/);
+ assert.match(html,/raw potential × 0\.27 × novelty/);
 });
