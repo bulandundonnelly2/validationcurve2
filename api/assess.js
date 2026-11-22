@@ -307,8 +307,13 @@ async function proposePlan(req,res) {
         return res.status(200).json(result);
       }catch(err){lastError=err.name==='TimeoutError'?'timeout':'request_error'}
     }
-    console.error('curve_generation_failed',lastError);
-    return res.status(502).json({error:'We could not create a new curve. Your previous curve is unchanged. Please try again.'});
+    console.error('curve_generation_failed',{reason:lastError,format:ext||'text'});
+    const reason=lastError==='provider_http_429'?'The AI analysis service has reached its rate limit. Please try again shortly.':
+      lastError==='provider_http_503'||lastError==='provider_http_502'?'The AI analysis service is temporarily unavailable. Please try again.':
+      lastError==='timeout'?'The AI analysis service timed out while reading your plan. Please retry.':
+      lastError==='invalid_json'||lastError==='invalid_structure'||lastError==='provider_finish_MAX_TOKENS'?'The AI could not return a complete assessment of this document. Try a shorter deck or retry.':
+      'The AI could not finish evaluating this document. Please retry.';
+    return res.status(502).json({error:reason+' Your existing curve is unchanged.',reason_code:lastError});
   } catch(err) { console.error('curve_generation_error',err.name||'error'); return res.status(502).json({error:'We could not create a new curve. Your previous curve is unchanged. Please try again.'}); }
 }
 

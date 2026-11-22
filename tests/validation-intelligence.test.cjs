@@ -252,3 +252,17 @@ test('Scoring disclosure is discreet, opt-in and reflects cumulative scoring',()
  assert.match(html,/not a business valuation/);
  assert.match(html,/score-formula-info'\)\?\.remove\(\)/);
 });
+
+test('PowerPoint upload exposes API errors and keeps existing curve on invalid results',()=>{
+ const submit=sourceBetween("$('#planForm').onsubmit=async", 'const ambitionProfiles=');
+ assert.match(submit,/let data=await r\.json\(\)\.catch\(\(\)=>\(\{\}\)\)/);
+ assert.match(submit,/The analysis returned no usable milestones/);
+ assert.match(submit,/if\(!r\.ok\)throw Error\(data\.error/);
+ assert.match(submit,/Analysis timed out while processing the file/);
+});
+test('PowerPoint remains an accepted document and uses the same analysis endpoint',()=>{
+ assert.match(html,/accept="\.pdf,\.pptx,\.docx,\.txt"/);
+ const submit=sourceBetween("$('#planForm').onsubmit=async", 'const ambitionProfiles=');
+ assert.match(submit,/mode:'plan'/);
+ assert.match(submit,/file:base64/);
+});
