@@ -1554,6 +1554,10 @@ function openRouteGuidance(id,index){
  panel.innerHTML=
   '<div class="navigator-heading"><h3>'+esc(model.name)+' route</h3><button type="button" class="navigator-close" id="navClose">✕ Close</button></div>'
   +'<p class="navigator-intro">Selected checkpoint '+(selectedIndex+1)+' of '+steps.length+' · '+esc(chosen.status||'Proposed')+', not achieved</p>'
+  +(()=>{
+    const assessment=routeShapeCheck(id,steps);
+    return '<p class="navigator-intro"><strong>Target-shape check: '+esc(assessment.status==='supported'?'Consistent with route':assessment.status==='mismatch'?'Does not match route':'Not yet established')+'.</strong> '+esc(assessment.reason)+'</p>';
+  })()
   +(tailoredRoute(id)?(()=>{
     const r=tailoredRoute(id),fit=effectiveRouteFit(id,r),recommended=state.growthRouteCache?.recommended_route===id&&fit.suitability!=='low';
     return '<section class="navigator-card route-fit-compact">'
