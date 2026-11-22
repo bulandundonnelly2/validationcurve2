@@ -637,14 +637,12 @@ function renderPlan(){document.querySelector('#planView .map-chart')?.dispatchEv
  const plotValues=cumulativeMilestonePositions(milestoneImpacts);
  const projectedValues=projectedMilestonePositions(milestoneImpacts,plotValues);
  // Route overlays are scenarios, not a contribution to the actual validation line.
- const lastAchievedIndex=milestoneImpacts.reduce((last,impact,i)=>impact.achieved?i:last,-1);
- const anchorScore=projectedValues.at(-1)||0;
  const routeIds=Array.isArray(state.comparisonCurves)?state.comparisonCurves:[];
  const routeScores=referenceModels.filter(model=>routeIds.includes(model.id)).map(model=>{
   const generated=tailoredRoute(model.id),steps=routeComparisonSteps(model.id,routeSnapshot());
   const changes=generated&&window.ValidationRouteEngine?.routeValidationDeltas(generated);
-  return anchorScore+(changes?.length===steps.length?changes.reduce((sum,gain)=>sum+gain,0):
-   steps.reduce((sum,step)=>sum+Math.min(1.8,routeSignalGain(step)*1.8),0));
+  return changes?.length===steps.length?changes.reduce((sum,gain)=>sum+gain,0):
+   steps.reduce((sum,step)=>sum+Math.min(1.8,routeSignalGain(step)*1.8),0);
  });
  const axisMin=Math.min(-2,Math.floor(Math.min(0,...plotValues,...projectedValues)));
  const axisMax=Math.max(5,Math.ceil(Math.max(0,...plotValues,...projectedValues,...routeScores)));
@@ -1894,17 +1892,15 @@ function joinedRoutePath(points,id){
  }
  return d;
 }
-function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
+function plotSharedSignalRoute(group,model,steps,ns,route){
  if(!steps.length)return;
  const svg=group.ownerSVGElement||$('#planView .map-chart svg');
  if(!svg)return;
- // Route comparisons are conditional extensions of the visible journey,
- // anchored at its last milestone rather than at an earlier achieved checkpoint.
- const lastNode=nodes.length?nodes[nodes.length-1].querySelector('circle'):null;
- const startX=lastNode?Number(lastNode.getAttribute('cx')):100;
- const startScore=lastNode?Number(lastNode.parentNode.dataset.signalScore):0;
- const startY=sharedSignalY(Number.isFinite(startScore)?startScore:0,svg);
- let score=Number.isFinite(startScore)?startScore:0;
+ // Each route is an independent zero-based scenario, not an extension of
+ // the user's latest milestone. All five share the same origin and score axis.
+ const startX=78;
+ const startY=sharedSignalY(0,svg);
+ let score=0;
  const dated=steps.every((step,i)=>Number.isFinite(Number(step.months_from_start))&&
   (i===0||Number(step.months_from_start)>Number(steps[i-1].months_from_start)));
  const duration=dated?Math.max(1,Number(steps.at(-1).months_from_start)):steps.length;
@@ -1933,7 +1929,7 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- title.textContent=model.name+' · CONDITIONAL projection using the same cumulative validation axis as actual outcomes. '+
+ title.textContent=model.name+' · Independent zero-based CONDITIONAL scenario using the same cumulative validation axis as actual outcomes. '+
   'Every proposed step is a forecast, not an achieved result, and does not change the solid actual curve. '+
   shape.reason+' '+(fit.suitability==='low'?'Not suitable currently: '+fit.reason+'. ':'')+
   'None of these future gains are observed evidence.';
@@ -1965,22 +1961,16 @@ function drawReferenceCurves(){
  const selected=Array.isArray(state.comparisonCurves)?state.comparisonCurves:[];
  applyChartZoom();
  if(!selected.length){if(typeof applyJourneyMode==='function')applyJourneyMode();return}
- const snap=routeSnapshot(),nodes=[...svg.querySelectorAll('g[data-plan-point]')];
- const reported=snap.reported.map(o=>{
-  const circle=nodes[o.i]?.querySelector('circle');
-  return circle?{i:o.i,x:Number(circle.getAttribute('cx')),y:Number(circle.getAttribute('cy')),milestone:o.m}:null;
- }).filter(Boolean);
- const last=reported[reported.length-1];
- const anchorX=last?.x??75,anchorY=last?.y??150;
- // Shared fixed viewBox from renderPlan; toggling route visibility cannot rescale the user's milestones.
+ const snap=routeSnapshot();
+ // Shared fixed viewBox and zero baseline: route toggles cannot alter actual milestone positions.
  const ns='http://www.w3.org/2000/svg';
  const group=document.createElementNS(ns,'g');
  group.setAttribute('id','referenceOverlays');
- group.setAttribute('aria-label','Route milestones compared against reported business milestones');
+ group.setAttribute('aria-label','Independent growth routes starting at zero, compared with actual business milestones');
  const models=referenceModels.filter(model=>selected.includes(model.id));
  models.forEach(model=>{
   const generated=tailoredRoute(model.id);
-  plotSharedSignalRoute(group,model,routeComparisonSteps(model.id,snap),nodes,ns,generated);
+  plotSharedSignalRoute(group,model,routeComparisonSteps(model.id,snap),ns,generated);
  });
  // Draw route checkpoints above the real milestone circles; their x-offset keeps both targets available.
  svg.appendChild(group);
