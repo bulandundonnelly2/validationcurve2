@@ -1658,7 +1658,7 @@ function drawReferenceCurves(){
   const intelligent=tailoredRoute(selectedRoute);
   const fit=effectiveRouteFit(selectedRoute,intelligent);
   const shape=routeShapeCheck(selectedRoute,selectRouteMilestones(selectedRoute,snap));
-  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(shape.status==='mismatch'?'<b style="color:#ffc4a0">SHAPE NOT SUPPORTED</b> · ':shape.status==='unknown'?'Shape unverified · ':'')++(fit.suitability==='low'?'<b style="color:#ffc4a0">NOT SUITABLE CURRENTLY</b> · '+esc(shortRouteText(fit.reason,105)):(intelligent?esc(fit.label+' · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence')))+' <button type="button" data-open-route>View route milestones ↗</button>';
+  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(shape.status==='mismatch'?'<b style="color:#ffc4a0">SHAPE NOT SUPPORTED</b> · ':shape.status==='unknown'?'Shape unverified · ':'')+(fit.suitability==='low'?'<b style="color:#ffc4a0">NOT SUITABLE CURRENTLY</b> · '+esc(shortRouteText(fit.reason,105)):(intelligent?esc(fit.label+' · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence')))+' <button type="button" data-open-route>View route milestones ↗</button>';
   chart.appendChild(tip);
   tip.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
  }
