@@ -597,14 +597,7 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
  const milestoneImpacts=plan.milestones.map((m,i)=>milestoneImpact(m,estimateMilestone(m).value,cumulativeLevels[i].result));
  // Cumulative signed change, ALWAYS beginning at zero. Later smaller positive
  // milestones still move up. Negative results move down. Neutral stays flat.
- let progress=0;
- const plotValues=milestoneImpacts.map((impact,i)=>{
-  // Milestone 1 establishes the baseline. Every later milestone is a
-  // signed change relative to that starting point.
-  if(i===0)return 0;
-  progress=Number((progress+impact.value).toFixed(6));
-  return progress;
- });
+ const plotValues=cumulativeMilestonePositions(milestoneImpacts);
  const lastReportedIndex=cumulativeLevels.reduce((last,o,i)=>o.known?i:last,-1);
  const anchorScore=lastReportedIndex>=0?plotValues[lastReportedIndex]:0;
  const routeScores=referenceModels.map(model=>{
@@ -613,8 +606,10 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
  });
  // Reserve at least +/-1 unit; a short or weak history must not appear to
  // fill the entire chart through autoscaling.
- const axisMin=Math.min(-1,Math.floor(Math.min(0,...plotValues)));
- const axisMax=Math.max(1,Math.ceil(Math.max(0,...plotValues,...routeScores)));
+ // Fixed minimum visible domain prevents small early wins from appearing
+ // near the top merely because the data autoscaled around them.
+ const axisMin=Math.min(-2,Math.floor(Math.min(0,...plotValues)));
+ const axisMax=Math.max(5,Math.ceil(Math.max(0,...plotValues,...routeScores)));
  const scoreY=value=>485-(value-axisMin)/(axisMax-axisMin)*385;
  const tickInterval=(axisMax-axisMin)>10?2:(axisMax-axisMin)>5?1:.5;
  const axisTicks=[];
@@ -799,6 +794,15 @@ function inferMilestoneOutcome(m){
  if(negative)return 'negative';
  if(positive)return 'positive';
  return 'unclear';
+}
+function cumulativeMilestonePositions(impacts){
+ // First checkpoint is the baseline; later signed contributions compound.
+ let total=0;
+ return impacts.map((impact,i)=>{
+  if(i===0)return 0;
+  total=Number((total+impact.value).toFixed(6));
+  return total;
+ });
 }
 function milestoneImpact(m,value,result){
  const relevance=milestoneRelevance(m);
