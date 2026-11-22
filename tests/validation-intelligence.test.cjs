@@ -170,3 +170,41 @@ test('Pending achieved experiments receive muted solid connectors instead of a d
  assert.match(html,/impact\.pendingEvidence\?'\.65'/);
  assert.match(html,/Achieved · awaiting outcome assessment/);
 });
+
+test('Achieving milestone 3 out of order preserves a connected negative movement instead of resetting to zero',()=>{
+ const earlier=[
+  {value:0,achieved:false,hasScoredOutcome:false,projected:1.25},
+  {value:0,achieved:false,hasScoredOutcome:false,projected:.65},
+  {value:0,achieved:false,hasScoredOutcome:false,projected:-.30},
+  {value:0,achieved:false,hasScoredOutcome:false,projected:1.20}
+ ];
+ const beforeActual=score.cumulativeMilestonePositions(earlier);
+ const before=Array.from(score.projectedMilestonePositions(earlier,beforeActual));
+ assert.deepEqual(before,[1.25,1.9,1.6,2.8]);
+ earlier[2]={value:-.19,achieved:true,hasScoredOutcome:true,projected:-.30};
+ const afterActual=score.cumulativeMilestonePositions(earlier);
+ const after=Array.from(score.projectedMilestonePositions(earlier,afterActual));
+ assert.deepEqual(after,[1.25,1.9,1.71,2.91]);
+ assert.ok(after[2]<after[1]);
+ assert.equal(afterActual[2],-.19);
+ assert.ok(Math.abs((after[2]-after[1])+.19)<1e-9);
+});
+test('Achieving a positive milestone out of order raises the connected journey and recalculates downstream points',()=>{
+ const items=[
+  {value:0,achieved:false,hasScoredOutcome:false,projected:.7},
+  {value:0,achieved:false,hasScoredOutcome:false,projected:1.1},
+  {value:0,achieved:false,hasScoredOutcome:false,projected:.8}
+ ];
+ const before=score.projectedMilestonePositions(items,score.cumulativeMilestonePositions(items));
+ items[1]={value:.35,achieved:true,hasScoredOutcome:true,projected:1.1};
+ const after=score.projectedMilestonePositions(items,score.cumulativeMilestonePositions(items));
+ assert.deepEqual(Array.from(after),[.7,1.05,1.85]);
+ assert.ok(after[1]>after[0]);
+ assert.ok(after[1]<before[1]);
+});
+test('Connected segments always start from the immediately preceding displayed point',()=>{
+ assert.match(html,/let previous=\[78,scoreY\(0\)\]/);
+ assert.match(html,/const path=segment\(previous,end\)/);
+ assert.match(html,/previous=end/);
+ assert.doesNotMatch(html,/segment\(actualPrevious,end\)/);
+});
