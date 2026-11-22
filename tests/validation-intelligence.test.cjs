@@ -187,7 +187,7 @@ test('Achieving milestone 3 out of order preserves a connected negative movement
  assert.deepEqual(after,[1.25,1.9,1.71,2.91]);
  assert.ok(after[2]<after[1]);
  assert.equal(afterActual[2],-.19);
- assert.equal(after[2]-after[1],-.19);
+ assert.ok(Math.abs((after[2]-after[1])+.19)<1e-9);
 });
 test('Achieving a positive milestone out of order raises the connected journey and recalculates downstream points',()=>{
  const items=[
