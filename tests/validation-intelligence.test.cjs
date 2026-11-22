@@ -335,3 +335,55 @@ test('Forecast is muted grey dashed while the actual ledger is separate',()=>{
  assert.match(html,/Activity ceilings:/);
  assert.match(html,/raw potential × 0\.27 × novelty/);
 });
+
+test('Manual score adjusts a planned milestone but never creates actual validation',()=>{
+ const result=score.milestoneImpact({title:'Spoke with 3 VCs',status:'Not started',manual_impact:1.95},5,'none');
+ assert.equal(result.projected,1.95);
+ assert.equal(result.value,0);
+ assert.equal(result.hasScoredOutcome,false);
+ assert.equal(result.manualOverride,true);
+ assert.match(result.note,/USER-ADJUSTED/);
+});
+test('Manual score supports negative planned setbacks and zero',()=>{
+ const negative=score.milestoneImpact({title:'Potential field trial',status:'Not started',manual_impact:-1.5},4,'none');
+ assert.equal(negative.projected,-1.5);
+ assert.equal(negative.value,0);
+ const neutral=score.milestoneImpact({title:'Investor meeting',status:'Not started',manual_impact:0},5,'none');
+ assert.equal(neutral.projected,0);
+});
+test('Documented achieved milestones accept signed manual impacts',()=>{
+ const observed={status:'Achieved',reported_evidence:'Observed results',testQuality:{score:85,confidence:.85,band:'Documented'}};
+ assert.equal(score.milestoneImpact({...observed,title:'Customers paid',manual_impact:2.45},5,'positive').value,2.45);
+ assert.equal(score.milestoneImpact({...observed,title:'Field trial failure',manual_impact:-1.75},4,'negative').value,-1.75);
+});
+test('Manual score cannot mark an unproven achievement as validated',()=>{
+ const result=score.milestoneImpact({title:'Investor conversation',status:'Achieved',manual_impact:6,evidence_direction:'unclear'},5,'none');
+ assert.equal(result.value,0);
+ assert.equal(result.projected,6);
+ assert.equal(result.hasScoredOutcome,false);
+ assert.equal(result.pendingEvidence,true);
+});
+test('Manual score can challenge AI relevance but does not invent observed evidence',()=>{
+ const m={title:'Uncategorised milestone',status:'Not started',value_assessment:{relevance:0,potential_value:0},manual_impact:.7};
+ const result=score.milestoneImpact(m,0,'none');
+ assert.equal(result.projected,.7);
+ assert.equal(result.value,0);
+});
+test('Clearing the override returns to the automatic activity ceiling',()=>{
+ const m={title:'Spoke with 3 VCs',status:'Not started',manual_impact:1.95};
+ const adjusted=score.milestoneImpact(m,5,'none');
+ delete m.manual_impact;
+ const automatic=score.milestoneImpact(m,5,'none');
+ assert.equal(adjusted.projected,1.95);
+ assert.ok(automatic.projected<=.15);
+ assert.equal(automatic.manualOverride,false);
+});
+test('Manual override UI has score validation, reason, reset and automatic comparison',()=>{
+ assert.match(html,/name="manual_impact" type="number" min="-8" max="8" step="0.01"/);
+ assert.match(html,/name="manual_impact_reason"/);
+ assert.match(html,/delete m\.manual_impact/);
+ assert.match(html,/selectedOutcome==='positive'&&proposedManual<0/);
+ assert.match(html,/Edit milestone \/ score/);
+ assert.match(html,/data-automatic-impact/);
+ assert.match(html,/USER-ADJUSTED/);
+});
