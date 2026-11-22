@@ -1655,12 +1655,13 @@ function setupReferenceControls(){
  scoreInfo.innerHTML=
   '<div class="score-formula-heading"><strong>How validation is scored</strong><button type="button" class="score-formula-close" aria-label="Close scoring explanation">×</button></div>'+
   '<p><b>Cumulative result:</b> V₀ = 0; Vₙ = Vₙ₋₁ + ΔVₙ. Positive results rise, negative results fall, and neutral results stay level. A smaller positive result never makes the curve drop.</p>'+
-  '<p><b>Milestone impact:</b> ΔV = direction × min(8, raw potential × evidence multiplier × novelty factor), subject to evidence caps and rounding. Direction is +1 for a positive outcome and −1 for a negative outcome.</p>'+
+  '<p><b>Milestone impact:</b> ΔV = direction × min(8, raw potential × evidence multiplier × novelty factor, evidence cap, activity ceiling if applicable), rounded to two decimal places. Direction is +1 for a positive outcome and −1 for a negative outcome.</p>'+
   '<p><b>Potential (0–5):</b> maps to 0, 0.55, 1.25, 2.30, 3.85 or 4.90 relative units. For unusually well-documented major funding at an early stage, the raw value may be 7.30.</p>'+
   '<p><b>Evidence multiplier:</b> 0.22 + 0.78 × [min(1, evidence confidence ÷ 0.85)]¹·³. Evidence confidence comes from the supplied provenance metadata, not independent fact-checking. Novelty reduces credit for duplicated milestones.</p>'+
   '<p><b>Evidence limits:</b> a quality score below 40 caps impact at 0.90; below 65 caps it at 2.90; ordinary milestones otherwise cap at 4.90. High-confidence exceptional funding may score higher, up to 8.00.</p>'+
+  '<p><b>Activity ceilings:</b> introductions, investor conversations and pitches: 0.20 actual / 0.15 projected; surveys and feedback: 0.40 actual / 0.25 projected; due diligence: 0.80 / 0.50; term sheets: 2.00 / 1.00. These limits are illustrative safeguards, not empirical probabilities.</p>'+
   '<p><b>When is an impact counted?</b> Only relevant, nonzero-potential milestones marked Achieved with an observed positive or negative outcome affect the actual score. Mixed, unclear, irrelevant or unevidenced achievements contribute zero until the outcome is assessed.</p>'+
-  '<p><b>Projections:</b> future milestones use separate conditional estimates, not proven impact. The displayed connected journey can include forecasts; the actual validation total only includes assessed outcomes. Growth-route overlays are illustrative, not probabilities.</p>'+
+  '<p><b>Projections:</b> conditional impact = direction × min(1.20, raw potential × 0.27 × novelty, activity ceiling if applicable). These amounts do NOT increase earned validation. Unverified paths are grey dashed; the separate actual-validation line uses assessed results only. Growth-route overlays are illustrative, not probabilities.</p>'+
   '<p class="score-formula-footnote">Scores are heuristic relative validation units, not a business valuation, financial return or prediction of success.</p>';
  explainer.after(scoreInfo);
  const scoreToggle=toolbar.querySelector('#scoreFormulaToggle');
