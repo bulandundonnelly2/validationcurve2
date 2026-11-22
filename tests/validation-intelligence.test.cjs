@@ -11,7 +11,7 @@ function extract(start,end){
  return html.slice(from,to);
 }
 test('Inline app JavaScript parses',()=>{
- const match=html.match(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/i);
+ const match=html.match(new RegExp('<script\\b[^>]*>([\\s\\S]*?)</script>','i'));
  assert.ok(match);
  new vm.Script(match[1]);
 });
@@ -51,7 +51,7 @@ test('Baseline helper is available for persistent original-plan snapshots',()=>a
 test('Experiments rank learning, uncertainty and effort instead of relying only on milestone order',()=>{
  assert.match(html,/RECOMMENDED EXPERIMENTS/);
  assert.match(html,/uncertainty\*learning/);
- assert.match(html,/effort\\/cost/);
+ assert.ok(html.includes('effort/cost'));
 });
 test('Exports and live route re-evaluation remain available in More options',()=>{
  assert.match(html,/function showAdaptiveRoutes/);
