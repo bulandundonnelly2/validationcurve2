@@ -273,7 +273,7 @@ test('New document upload hides editor before rendering and refits after layout'
  const submit=sourceBetween("$('#planForm').onsubmit=async", 'const ambitionProfiles=');
  const completion=submit.slice(submit.indexOf("chartZoom=1;"));
  assert.ok(completion.indexOf("$('#planForm').hidden=true")<completion.indexOf('renderPlan()'));
- assert.match(completion,/renderPlan\(\);\$\('#planForm'\)\.reset\(\);scheduleChartFit\(\)/);
+ assert.match(completion,/renderPlan\(\);\$\('#planForm'\)\.reset\(\);\$\('#selectedPlanFile'\)\.textContent='';scheduleChartFit\(\)/);
 });
 test('Graph initially fits after layout and observes container resize',()=>{
  assert.match(html,/function scheduleChartFit\(\)/);
