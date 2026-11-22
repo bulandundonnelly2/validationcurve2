@@ -1572,23 +1572,22 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  if(!steps.length)return;
  const svg=group.ownerSVGElement||$('#planView .map-chart svg');
  if(!svg)return;
- // The last recorded outcome anchors every route at the same *actual* signal.
- // No synthetic historical milestones are inserted on comparison curves.
- const milestones=state.plan?.milestones||[];
+ // Route steps are independent conditional milestone impacts on the same -1..+1 scale.
+ // Anchor comparisons at the most recent recorded checkpoint but don't accumulate
+ // unrelated future milestone values above the chart's maximum.
  const reported=routeSnapshot().reported;
  const last=reported.at(-1);
  const lastNode=last?nodes[last.i]?.querySelector('circle'):null;
  const startX=lastNode?Number(lastNode.getAttribute('cx')):100;
  const startScore=lastNode?Number(lastNode.parentNode.dataset.signalScore):0;
  const startY=sharedSignalY(Number.isFinite(startScore)?startScore:0,svg);
- let score=Number.isFinite(startScore)?startScore:0;
  const dated=steps.every((step,i)=>Number.isFinite(Number(step.months_from_start))&&
   (i===0||Number(step.months_from_start)>Number(steps[i-1].months_from_start)));
  const duration=dated?Math.max(1,Number(steps.at(-1).months_from_start)):steps.length;
  const pts=[[startX,startY]];
  const projected=[];
  steps.forEach((step,i)=>{
-  score+=routeSignalGain(step);
+  const score=routeSignalGain(step);
   const progress=dated?Number(step.months_from_start)/duration:(i+1)/steps.length;
   const x=startX+(1550-startX)*Math.max(0,Math.min(1,progress));
   projected.push({step,i,x,y:sharedSignalY(score,svg),score});
@@ -1604,8 +1603,8 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- title.textContent=model.name+' · CONDITIONAL comparison on the same relative validation-signal units as the actual curve. '+
-  'Each proposed milestone contributes its full potential value (value/5), conditionally and without observed validation credit. '+
+ title.textContent=model.name+' · CONDITIONAL comparison on the same -1 to +1 milestone impact scale as the main curve. '+
+  'Each proposed step is plotted by its standalone potential (value/5); it is not an observed result. '+
   shape.reason+' '+(fit.suitability==='low'?'Not suitable currently: '+fit.reason+'. ':'')+
   'None of these future gains are observed evidence.';
  path.appendChild(title);group.appendChild(path);
@@ -1619,7 +1618,7 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
   const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);
   dot.setAttribute('r','6');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width','2');
   const tip=document.createElementNS(ns,'title');
-  tip.textContent=step.title+' · Conditional validation signal '+score.toFixed(2)+' relative units · Potential value '+
+  tip.textContent=step.title+' · Conditional milestone impact +'+score.toFixed(2)+' relative units · Potential value '+
    routePotentialValue(step).toFixed(1)+'/5 · Unverified proposed milestone. '+shape.reason;
   marker.append(hit,dot,tip);
   const select=()=>openRouteGuidance(model.id,i);
