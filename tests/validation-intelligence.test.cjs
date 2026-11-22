@@ -11,9 +11,9 @@ function extract(start,end){
  return html.slice(from,to);
 }
 test('Inline app JavaScript parses',()=>{
- const match=html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i);
- assert.ok(match);
- new vm.Script(match[1]);
+ const scripts=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).filter(code=>code.trim());
+ assert.ok(scripts.length);
+ scripts.forEach(code=>new vm.Script(code));
 });
 const quality=vm.runInNewContext(extract('function milestoneEvidenceQuality(', 'function milestoneLinkedEvidence(')+'\nmilestoneEvidenceQuality;');
 test('Achieved status and planned evidence do not count as observed proof',()=>{
