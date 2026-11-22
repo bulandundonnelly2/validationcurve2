@@ -1523,10 +1523,11 @@ function setupChartZoom(){
  // Wait for layout before measuring: a zero-sized chart otherwise uses the
  // 320px fallback, leaving the curve tiny despite the zoom control saying 100%.
  scheduleChartFit();
- if(typeof ResizeObserver==='function'){
+ if(typeof ResizeObserver==='function'&&!chart.dataset.fitObserverReady){
+  chart.dataset.fitObserverReady='true';
   const observer=new ResizeObserver(()=>scheduleChartFit());
   observer.observe(chart);
-  chart.addEventListener('curve-layout-dispose',()=>observer.disconnect(),{once:true});
+  chart.addEventListener('curve-layout-dispose',()=>{observer.disconnect();delete chart.dataset.fitObserverReady},{once:true});
  }
 }
 let pendingChartFit=false;
