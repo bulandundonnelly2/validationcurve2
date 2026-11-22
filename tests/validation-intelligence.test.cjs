@@ -223,6 +223,6 @@ test('Milestone removal controls appear in the selected journey and reuse existi
  assert.match(html,/data-advice-remove/);
  assert.match(html,/data-advice-edit/);
  assert.match(html,/removalAdvice\.hidden=!removal/);
- assert.match(html,/\[data-advice-remove\]'\)\]\.onclick=\(\)=>deleteMilestone\.click\(\)/);
- assert.match(html,/\[data-advice-edit\]'\)\]\.onclick=\(\)=>quickEdit\.click\(\)/);
+ assert.ok(html.includes("removalAdvice.querySelector('[data-advice-remove]').onclick=()=>deleteMilestone.click()"));
+ assert.ok(html.includes("removalAdvice.querySelector('[data-advice-edit]').onclick=()=>quickEdit.click()"));
 });
