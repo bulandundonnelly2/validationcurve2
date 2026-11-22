@@ -208,3 +208,21 @@ test('Connected segments always start from the immediately preceding displayed p
  assert.match(html,/previous=end/);
  assert.doesNotMatch(html,/segment\(actualPrevious,end\)/);
 });
+
+test('Irrelevant milestones prompt removal while business milestones with missing evidence do not',()=>{
+ const src=sourceBetween('function milestoneRemovalRecommendation(m){','function inferMilestoneOutcome(m){');
+ const recommendation=vm.runInNewContext(src+';milestoneRemovalRecommendation',{
+  milestoneRelevance:m=>m.value_assessment?.relevance===0?
+   {score:0,reason:'No business connection'}:{score:1,reason:'Relevant to business'}
+ });
+ assert.match(recommendation({title:'Had a Coke',value_assessment:{relevance:0}}).reason,/Consider removing/);
+ assert.equal(recommendation({title:'50 prospective customers',value_assessment:{relevance:1}}),null);
+ assert.equal(recommendation({title:'Signed contract, evidence pending'}),null);
+});
+test('Milestone removal controls appear in the selected journey and reuse existing edit/delete handlers',()=>{
+ assert.match(html,/data-advice-remove/);
+ assert.match(html,/data-advice-edit/);
+ assert.match(html,/removalAdvice\.hidden=!removal/);
+ assert.ok(html.includes("removalAdvice.querySelector('[data-advice-remove]').onclick=()=>deleteMilestone.click()"));
+ assert.ok(html.includes("removalAdvice.querySelector('[data-advice-edit]').onclick=()=>quickEdit.click()"));
+});
