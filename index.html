@@ -361,7 +361,7 @@ body.curve-open #planView .next-experiment-toggle{
  background:#285d47;color:#e8f8df;font-size:11px;font-weight:750;cursor:pointer
 }
 body.curve-open #planView .decision-sheet{
- position:absolute;right:12px;top:76px;z-index:35;box-sizing:border-box;
+ position:absolute;left:12px;right:auto;top:76px;z-index:35;box-sizing:border-box;
  width:min(380px,calc(100% - 24px));max-height:calc(100% - 88px);
  overflow-y:auto;background:#f6faf3;color:#254b37;border:1px solid #b8d7b9;
  border-radius:16px;box-shadow:0 12px 30px #071a1699;padding:16px;font-size:13px;
@@ -534,7 +534,7 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
   save();renderPlan();
   $('#planView g[data-plan-point="'+index+'"]')?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
  };
- const actions=document.createElement('div');actions.className='inline-actions';actions.appendChild(box.querySelector('#addPlanItem'));actions.appendChild(box.querySelector('#savePlanEdits'));actions.appendChild(box.querySelector('#planEditStatus'));journey.appendChild(actions);actions.hidden=true;journey.querySelectorAll('[data-plan-card] details').forEach(details=>details.addEventListener('toggle',()=>{if(!details.closest('[data-plan-card]').hidden)actions.hidden=!details.open}));let selected=0;let playing=null;const svg=landscape.querySelector('.map-chart svg');const ns='http://www.w3.org/2000/svg';const guide=document.createElementNS(ns,'line');guide.setAttribute('class','focus-line');svg.insertBefore(guide,svg.querySelector('[data-plan-point]'));const halo=document.createElementNS(ns,'circle');halo.setAttribute('class','focus-halo');halo.setAttribute('r','28');svg.appendChild(halo);const range=journey.querySelector('input');const showJourney=i=>{const next=Math.max(0,Math.min(n-1,i));if(next!==selected)closeDirectEditor();selected=next;const m=plan.milestones[selected];const pos=points[selected];guide.setAttribute('x1',pos[0]);guide.setAttribute('x2',pos[0]);guide.setAttribute('y1',pos[1]+18);guide.setAttribute('y2','190');halo.setAttribute('cx',pos[0]);halo.setAttribute('cy',pos[1]);landscape.querySelector('[data-chart-title]').textContent=m.title||'Untitled milestone';landscape.querySelector('[data-chart-progress]').textContent=(selected+1)+' / '+n;range.value=selected;journey.querySelector('output').textContent=(selected+1)+' / '+n;journey.querySelector('[data-journey-count]').textContent=String(selected+1).padStart(2,'0');journey.querySelector('[data-journey-title]').textContent=(m.status==='Achieved'?String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim():m.title)||'Untitled milestone';journey.querySelector('[data-journey-status]').textContent=(m.timeframe||'Timeframe to decide')+' · '+(m.reported_evidence&&(!m.status||m.status==='Not started')?'Evidence reported':(m.status||'Not started'));journey.querySelector('[data-journey-why]').textContent=m.detail||m.why||m.target||'Explore what this step could reveal about your venture.';{const evidence=evidenceFor(m),latest=evidence[0];journey.querySelector('[data-journey-evidence]').textContent=latest?'Latest evidence ('+latest.date+'): '+latest.title+' · '+entryRating(latest).label:(m.reported_evidence?'Reported in your input: '+m.reported_evidence:(m.evidence?'Planned evidence: '+m.evidence:'No linked evidence yet.'));let insight=journey.querySelector('[data-evidence-insight]');if(!insight){insight=document.createElement('p');insight.dataset.evidenceInsight='';journey.querySelector('.journey-story').appendChild(insight)}insight.textContent=latest?[(latest.interpretation||entryRating(latest).reason),latest.missing?'Uncertainty: '+latest.missing:'',latest.nextSuggestion?'Next test: '+latest.nextSuggestion:''].filter(Boolean).join(' · '):[!m.reported_evidence?'This is a proposed milestone, not proof it happened.':'',m.evidence_gap?'Uncertainty: '+m.evidence_gap:'',m.next_test?'Next test: '+m.next_test:''].filter(Boolean).join(' · ');let source=journey.querySelector('.evidence-source');if(!source){source=document.createElement('details');source.className='evidence-source';const summary=document.createElement('summary');summary.textContent='See source excerpt';source.appendChild(summary);source.appendChild(document.createElement('p'));journey.querySelector('.journey-story').appendChild(source)}source.open=false;source.hidden=!!latest||!m.reported_evidence;source.querySelector('p').textContent=m.evidence_source||'Not available';}journey.querySelectorAll('[data-plan-card]').forEach(card=>card.hidden=Number(card.dataset.planCard)!==selected);actions.hidden=!journey.querySelector('[data-plan-card="'+selected+'"] details')?.open;box.querySelectorAll('[data-plan-point]').forEach(p=>{const active=Number(p.dataset.planPoint)===selected;p.classList.toggle('selected',active);p.setAttribute('aria-pressed',String(active))});journey.querySelector('[data-journey-prev]').disabled=selected===0;journey.querySelector('[data-journey-next]').disabled=selected===n-1};const play=journey.querySelector('[data-journey-play]');const stop=()=>{if(playing){clearInterval(playing);playing=null}play.textContent='Play journey';play.setAttribute('aria-pressed','false')};play.onclick=()=>{if(playing){stop();return}if(selected===n-1)showJourney(0);play.textContent='Pause journey';play.setAttribute('aria-pressed','true');playing=setInterval(()=>{if(!journey.isConnected||selected>=n-1){stop();return}showJourney(selected+1);if(selected===n-1)stop()},2600)};journey.querySelector('[data-journey-prev]').onclick=()=>{stop();showJourney(selected-1)};journey.querySelector('[data-journey-next]').onclick=()=>{stop();showJourney(selected+1)};range.oninput=()=>{stop();showJourney(Number(range.value))};close.onclick=()=>{stop();journey.hidden=true};if(n===1)play.disabled=true;showJourney(0);box.querySelectorAll('[data-plan-point]').forEach(point=>{const show=()=>{stop();showJourney(Number(point.dataset.planPoint));journey.hidden=false};point.addEventListener('click',show);point.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show()}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();stop();showJourney(selected+(e.key==='ArrowRight'?1:-1));box.querySelector('g[data-plan-point="'+selected+'"]')?.focus()}})});journey.querySelectorAll('[data-plan-field]').forEach(el=>el.addEventListener('input',()=>{$('#planEditStatus').textContent='You have unsaved edits.'}));const commitMilestoneFields=()=>{journey.querySelectorAll('[data-plan-field]').forEach(el=>{plan.milestones[Number(el.dataset.planIndex)][el.dataset.planField]=el.value.trim()})};
+ const actions=document.createElement('div');actions.className='inline-actions';actions.appendChild(box.querySelector('#addPlanItem'));actions.appendChild(box.querySelector('#savePlanEdits'));actions.appendChild(box.querySelector('#planEditStatus'));journey.appendChild(actions);actions.hidden=true;journey.querySelectorAll('[data-plan-card] details').forEach(details=>details.addEventListener('toggle',()=>{if(!details.closest('[data-plan-card]').hidden)actions.hidden=!details.open}));let selected=0;let playing=null;const svg=landscape.querySelector('.map-chart svg');const ns='http://www.w3.org/2000/svg';const guide=document.createElementNS(ns,'line');guide.setAttribute('class','focus-line');svg.insertBefore(guide,svg.querySelector('[data-plan-point]'));const halo=document.createElementNS(ns,'circle');halo.setAttribute('class','focus-halo');halo.setAttribute('r','28');svg.appendChild(halo);const range=journey.querySelector('input');const showJourney=i=>{const next=Math.max(0,Math.min(n-1,i));if(next!==selected)closeDirectEditor();selected=next;workspace.dataset.selectedMilestone=String(selected);workspace.dispatchEvent(new CustomEvent('milestone-selected',{detail:{index:selected}}));const m=plan.milestones[selected];const pos=points[selected];guide.setAttribute('x1',pos[0]);guide.setAttribute('x2',pos[0]);guide.setAttribute('y1',pos[1]+18);guide.setAttribute('y2','190');halo.setAttribute('cx',pos[0]);halo.setAttribute('cy',pos[1]);landscape.querySelector('[data-chart-title]').textContent=m.title||'Untitled milestone';landscape.querySelector('[data-chart-progress]').textContent=(selected+1)+' / '+n;range.value=selected;journey.querySelector('output').textContent=(selected+1)+' / '+n;journey.querySelector('[data-journey-count]').textContent=String(selected+1).padStart(2,'0');journey.querySelector('[data-journey-title]').textContent=(m.status==='Achieved'?String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim():m.title)||'Untitled milestone';journey.querySelector('[data-journey-status]').textContent=(m.timeframe||'Timeframe to decide')+' · '+(m.reported_evidence&&(!m.status||m.status==='Not started')?'Evidence reported':(m.status||'Not started'));journey.querySelector('[data-journey-why]').textContent=m.detail||m.why||m.target||'Explore what this step could reveal about your venture.';{const evidence=evidenceFor(m),latest=evidence[0];journey.querySelector('[data-journey-evidence]').textContent=latest?'Latest evidence ('+latest.date+'): '+latest.title+' · '+entryRating(latest).label:(m.reported_evidence?'Reported in your input: '+m.reported_evidence:(m.evidence?'Planned evidence: '+m.evidence:'No linked evidence yet.'));let insight=journey.querySelector('[data-evidence-insight]');if(!insight){insight=document.createElement('p');insight.dataset.evidenceInsight='';journey.querySelector('.journey-story').appendChild(insight)}insight.textContent=latest?[(latest.interpretation||entryRating(latest).reason),latest.missing?'Uncertainty: '+latest.missing:'',latest.nextSuggestion?'Next test: '+latest.nextSuggestion:''].filter(Boolean).join(' · '):[!m.reported_evidence?'This is a proposed milestone, not proof it happened.':'',m.evidence_gap?'Uncertainty: '+m.evidence_gap:'',m.next_test?'Next test: '+m.next_test:''].filter(Boolean).join(' · ');let source=journey.querySelector('.evidence-source');if(!source){source=document.createElement('details');source.className='evidence-source';const summary=document.createElement('summary');summary.textContent='See source excerpt';source.appendChild(summary);source.appendChild(document.createElement('p'));journey.querySelector('.journey-story').appendChild(source)}source.open=false;source.hidden=!!latest||!m.reported_evidence;source.querySelector('p').textContent=m.evidence_source||'Not available';}journey.querySelectorAll('[data-plan-card]').forEach(card=>card.hidden=Number(card.dataset.planCard)!==selected);actions.hidden=!journey.querySelector('[data-plan-card="'+selected+'"] details')?.open;box.querySelectorAll('[data-plan-point]').forEach(p=>{const active=Number(p.dataset.planPoint)===selected;p.classList.toggle('selected',active);p.setAttribute('aria-pressed',String(active))});journey.querySelector('[data-journey-prev]').disabled=selected===0;journey.querySelector('[data-journey-next]').disabled=selected===n-1};const play=journey.querySelector('[data-journey-play]');const stop=()=>{if(playing){clearInterval(playing);playing=null}play.textContent='Play journey';play.setAttribute('aria-pressed','false')};play.onclick=()=>{if(playing){stop();return}if(selected===n-1)showJourney(0);play.textContent='Pause journey';play.setAttribute('aria-pressed','true');playing=setInterval(()=>{if(!journey.isConnected||selected>=n-1){stop();return}showJourney(selected+1);if(selected===n-1)stop()},2600)};journey.querySelector('[data-journey-prev]').onclick=()=>{stop();showJourney(selected-1)};journey.querySelector('[data-journey-next]').onclick=()=>{stop();showJourney(selected+1)};range.oninput=()=>{stop();showJourney(Number(range.value))};close.onclick=()=>{stop();journey.hidden=true};if(n===1)play.disabled=true;showJourney(0);box.querySelectorAll('[data-plan-point]').forEach(point=>{const show=()=>{stop();showJourney(Number(point.dataset.planPoint));journey.hidden=false};point.addEventListener('click',show);point.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();show()}else if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();stop();showJourney(selected+(e.key==='ArrowRight'?1:-1));box.querySelector('g[data-plan-point="'+selected+'"]')?.focus()}})});journey.querySelectorAll('[data-plan-field]').forEach(el=>el.addEventListener('input',()=>{$('#planEditStatus').textContent='You have unsaved edits.'}));const commitMilestoneFields=()=>{journey.querySelectorAll('[data-plan-field]').forEach(el=>{plan.milestones[Number(el.dataset.planIndex)][el.dataset.planField]=el.value.trim()})};
  // Selecting Achieved must update the graph immediately, not wait for a
  // separate save action tucked at the bottom of the details panel.
  journey.querySelectorAll('select[data-plan-field="status"]').forEach(select=>select.addEventListener('change',()=>{
@@ -1889,95 +1889,108 @@ function renderValidationAdviser(){
  if(!plan?.milestones?.length||!workspace)return;
  workspace.querySelector('.decision-sheet')?.remove();
  chart.querySelector('.next-experiment-toggle')?.remove();
- let btn=document.createElement('button');
- btn.type='button';btn.className='next-experiment-toggle';
- btn.textContent='Next experiment';
- btn.title='See the most useful next validation test';
+ const btn=document.createElement('button');
+ btn.type='button';btn.className='next-experiment-toggle';btn.textContent='Next experiment';
+ btn.title='Suggest a test using the evidence available up to the selected milestone';
  chart.querySelector('.chart-topline')?.appendChild(btn);
  const sheet=document.createElement('aside');
- sheet.className='decision-sheet';
- sheet.hidden=true;
- sheet.setAttribute('aria-label','Business validation adviser');
+ sheet.className='decision-sheet';sheet.hidden=true;sheet.setAttribute('aria-label','Milestone experiment adviser');
  workspace.appendChild(sheet);
- const recordDate=()=>new Date().toISOString().slice(0,10);
- const isReported=m=>Boolean(String(m.reported_evidence||'').trim()) ||
+ const el=(tag,cls,value)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=value;return e};
+ const isReported=m=>Boolean(String(m.reported_evidence||'').trim())||
   (!plan.fromDocument&&(state.entries||[]).some(e=>!e.demo&&e.linkedMilestone===m.title));
- const selectNext=()=>{
-  const milestones=plan.milestones;
-  const unsuccessful=milestones.map((m,i)=>({m,i})).filter(({m})=>
-   isReported(m)&&(m.evidence_direction==='negative'||m.evidence_direction==='mixed'));
-  const pending=milestones.map((m,i)=>({m,i})).find(({m})=>!isReported(m)&&m.status!=='Revisit');
-  if(unsuccessful.length){
-   const last=unsuccessful[unsuccessful.length-1];
-   // An unresolved negative result is more important than blindly proceeding.
-   const after=milestones.slice(last.i+1).some(m=>isReported(m));
-   if(!after)return {...last,review:true};
-  }
-  return pending?{...pending,review:false}:null;
+ const limit=()=>Math.min(plan.milestones.length-1,Math.max(0,Number(workspace.dataset.selectedMilestone)||0));
+ // Only inspect milestones up to the chosen checkpoint. Later plans are never treated as achievements.
+ const contextAt=index=>{
+  const history=plan.milestones.slice(0,index+1);
+  const reported=history.map((m,i)=>({m,i})).filter(({m})=>isReported(m));
+  const achieved=history.filter(m=>m.status==='Achieved');
+  const unresolved=reported.filter(({m})=>['negative','mixed'].includes(m.evidence_direction)).at(-1);
+  const current=plan.milestones[index],future=plan.milestones[index+1];
+  return {current,future,reported,achieved,unresolved,history};
  };
- const el=(tag,cls,textValue)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(textValue!==undefined)node.textContent=textValue;return node};
+ const propose=index=>{
+  const ctx=contextAt(index),m=ctx.current;
+  const business=plan.businessDiagnosis||{};
+  const next=ctx.future;
+  const outcome=ctx.unresolved;
+  let focus,reason,method,pass,fail,collect,assumption;
+  if(outcome){
+   focus=outcome.m.title+' — investigate the unresolved result';
+   reason='A '+outcome.m.evidence_direction+' outcome was reported by milestone '+(outcome.i+1)+'. Resolve this uncertainty before assuming later expansion is validated.';
+   assumption=outcome.m.assumption||outcome.m.experiment_hypothesis||'The problem identified in the previous result can be explained and corrected.';
+   method='Repeat the relevant test with the affected users, conditions or system after isolating the cause. Compare outcomes with the original observation.';
+   pass='The repeated test resolves the identified problem and meets a measurable criterion you define before testing.';
+   fail='The same problem persists, or the evidence is too weak to justify progression.';
+   collect='Original and repeated results, failure logs, stakeholder observations and corrective actions.';
+  }else if(!isReported(m)){
+   focus=m.title+' — validate the proposed milestone';
+   reason='Milestone '+(index+1)+' is part of the plan, but no outcome evidence is recorded for it. Test its key assumption before treating it as achieved.';
+   assumption=m.experiment_hypothesis||m.assumption||m.why||'The expected outcome can be demonstrated in practice.';
+   method='Run a small, time-boxed test with representative customers, users or technical conditions. Record what was observed against a predefined target.';
+   pass=m.success_rule||m.target||'Reach the agreed measurable target with documented observations.';
+   fail=m.failure_rule||'The target is missed or the data are insufficient.';
+   collect=m.evidence||'Test results, dates, participants and supporting documentation.';
+  }else{
+   focus=next?next.title+' — test the next assumption':m.title+' — test repeatability';
+   reason=next?'At milestone '+(index+1)+', evidence is reported. The next planned step has not yet been validated; this experiment tests the transition without assuming it will succeed.':'The selected milestone has reported evidence. Test whether the result can be repeated before scaling further.';
+   assumption=next?(next.experiment_hypothesis||next.assumption||next.why||'The next step is feasible with the available resources.'):'The reported outcome is repeatable beyond the original conditions.';
+   method=next?'Conduct a limited pilot of the next milestone and compare real results against predefined criteria.':'Repeat the milestone under another representative condition or with a different customer cohort.';
+   pass=next?(next.success_rule||next.target||'Meet an agreed measurable outcome before proceeding.'):'Demonstrate comparable results in a second independent trial.';
+   fail=next?(next.failure_rule||'The pilot fails to meet the threshold or exposes a new blocker.'):'The result cannot be reproduced or depends on a one-off condition.';
+   collect=next?(next.evidence||'Pilot data and customer or technical feedback.'):'Repeat-test records and comparisons with the first result.';
+  }
+  if(business.biggest_uncertainty&&ctx.reported.length===0)reason+=' The business diagnosis identifies an additional uncertainty: '+business.biggest_uncertainty+'.';
+  return {title:'Experiment: '+focus,reason,assumption,method,pass,fail,collect,index};
+ };
  const build=()=>{
+  const i=limit(),ctx=contextAt(i),proposal=propose(i);
   sheet.replaceChildren();
   const head=el('div','decision-head');
-  head.appendChild(el('strong','', 'Your business adviser'));
+  head.appendChild(el('strong','','Next experiment · after milestone '+(i+1)));
   const close=el('button','decision-close','×');close.type='button';close.setAttribute('aria-label','Close adviser');close.onclick=()=>sheet.hidden=true;head.appendChild(close);sheet.appendChild(head);
-  const d=plan.businessDiagnosis;
-  if(d){
-   const details=el('details','decision-diagnosis');details.appendChild(el('summary','', 'Business diagnosis'));
-   for(const [label,key] of [['Customer','primary_customer'],['Problem','problem_to_solve'],['Revenue','revenue_model'],['Biggest uncertainty','biggest_uncertainty'],['Evidence position','evidence_position']]){
-    const p=el('p','');const bold=el('b','',label+': ');p.append(bold,document.createTextNode(d[key]||'Not established'));details.appendChild(p);
-   }
-   sheet.appendChild(details);
-  }
-  const chosen=selectNext();
-  if(!chosen){
-   sheet.appendChild(el('h4','', 'Review your evidence'));
-   sheet.appendChild(el('p','', 'All proposed experiments have a recorded outcome or were marked for review. Revisit your business assumptions before creating another validation step.'));
-   return;
-  }
-  const {m,i,review}=chosen;
-  sheet.appendChild(el('div','decision-kicker',review?'REVIEW A NEGATIVE OR MIXED RESULT':'NEXT RECOMMENDED TEST'));
-  sheet.appendChild(el('h4','',review?(m.next_test||'Revisit '+m.title):m.title));
-  sheet.appendChild(el('p','',review?'Your latest result raised an unresolved question. Investigate the cause before pursuing later expansion milestones.':(m.experiment_hypothesis||m.assumption||m.why||'Test the next assumption with a measurable experiment.')));
+  sheet.appendChild(el('div','decision-kicker','BASED ON YOUR PROGRESS TO THIS POINT'));
+  sheet.appendChild(el('p','','Milestones considered: 1–'+(i+1)+' · '+ctx.achieved.length+' marked achieved · '+ctx.reported.length+' with reported evidence.'));
+  const missing=ctx.history.filter(m=>m.status==='Achieved'&&!isReported(m)).length;
+  if(missing)sheet.appendChild(el('p','decision-caveat',missing+' achieved milestone(s) have no reported evidence. Their status does not count as proof.'));
+  const diagnosis=plan.businessDiagnosis;
+  if(diagnosis?.biggest_uncertainty)sheet.appendChild(el('p','','Business uncertainty: '+diagnosis.biggest_uncertainty));
+  sheet.appendChild(el('div','decision-kicker','SUGGESTED EXPERIMENT'));
+  sheet.appendChild(el('h4','',proposal.title));
+  sheet.appendChild(el('p','',proposal.reason));
   const criteria=el('div','decision-criteria');
-  if(m.target)criteria.appendChild(el('p','', 'Target: '+m.target));
-  if(m.success_rule)criteria.appendChild(el('p','', 'Proceed when: '+m.success_rule));
-  if(m.failure_rule)criteria.appendChild(el('p','', 'If it fails: '+m.failure_rule));
-  if(m.evidence)criteria.appendChild(el('p','', 'Collect: '+m.evidence));
-  sheet.appendChild(criteria);
-  const rating=estimateMilestone(m);sheet.appendChild(el('p','decision-score','Potential value '+rating.value+'/5 · Difficulty '+rating.difficulty+'/5 · Not independently verified'));
-  const open=el('button','decision-primary','Explore milestone '+(i+1));open.type='button';
-  open.onclick=()=>{sheet.hidden=true;chart.querySelectorAll('g[data-plan-point]')[i]?.dispatchEvent(new MouseEvent('click',{bubbles:true}))};
-  sheet.appendChild(open);
-  const outcome=el('details','decision-outcome');outcome.appendChild(el('summary','','Record experiment outcome'));
-  const label=el('label','','Outcome (what actually happened)');
-  const textarea=el('textarea','');textarea.rows=3;textarea.maxLength=500;textarea.placeholder='Describe what you observed, not the result you hoped for';label.appendChild(textarea);outcome.appendChild(label);
-  const directionLabel=el('label','','Result');
-  const select=el('select','');
-  for(const [v,t] of [['positive','Supports the assumption'],['mixed','Mixed evidence'],['negative','Contradicts the assumption'],['unclear','Inconclusive']]){
-   const option=el('option','',t);option.value=v;select.appendChild(option);
+  for(const [label,value] of [['Hypothesis',proposal.assumption],['How to test',proposal.method],['Success',proposal.pass],['If it fails',proposal.fail],['Collect',proposal.collect]]){
+   const p=el('p','');p.append(el('b','',label+': '),document.createTextNode(value));criteria.appendChild(p);
   }
-  directionLabel.appendChild(select);outcome.appendChild(directionLabel);
-  const submit=el('button','decision-primary','Save reported result');submit.type='button';
-  const feedback=el('p','decision-feedback','');
-  submit.onclick=()=>{
-   const note=textarea.value.trim();
-   if(note.length<10){feedback.textContent='Describe the actual observation in at least 10 characters.';return}
-   m.reported_evidence=note;
-   m.evidence_source='Founder-entered result on '+recordDate()+' (unverified)';
-   m.evidence_direction=select.value;
-   m.status='Achieved';
-   state.growthRouteCache=state.growthRouteCache||null;
-   save();
-   renderPlan();
-   // Recompute the recommendation from the newly reported result.
-   const next=$('#planView .next-experiment-toggle');
-   next?.click();
+  sheet.appendChild(criteria);
+  sheet.appendChild(el('p','decision-caveat','Rule-based suggestion using saved milestone context, not a new AI research result. Edit targets and methods before running it. Founder-reported outcomes are not independently verified.'));
+  const add=el('button','decision-primary','＋ Add experiment to curve');add.type='button';
+  add.onclick=()=>{
+   if(plan.milestones.length>=20){status.textContent='The curve supports up to 20 milestones. Remove one before adding another experiment.';return}
+   const duplicate=plan.milestones.some(m=>m.title===proposal.title&&m.source_checkpoint===i);
+   if(duplicate){status.textContent='This experiment has already been added from milestone '+(i+1)+'.';return}
+   const checkpoint=plan.milestones[i];
+   plan.milestones.splice(i+1,0,{
+    title:proposal.title.slice(0,500),status:'Not started',
+    timeframe:'After '+(checkpoint.timeframe||'milestone '+(i+1)),
+    target:proposal.pass.slice(0,500),detail:proposal.method.slice(0,900),
+    why:proposal.reason.slice(0,500),assumption:proposal.assumption.slice(0,500),
+    evidence:proposal.collect.slice(0,500),success_rule:proposal.pass.slice(0,500),
+    failure_rule:proposal.fail.slice(0,500),experiment_hypothesis:proposal.assumption.slice(0,500),
+    source:'next-experiment',source_checkpoint:i
+   });
+   save();renderPlan();
+   $('#planView g[data-plan-point="'+(i+1)+'"]')?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
   };
-  outcome.append(submit,feedback);sheet.appendChild(outcome);
-  sheet.appendChild(el('p','decision-caveat','Founder-reported outcomes are not independently verified. The graph reflects the reported direction and evidential relevance, not guaranteed business success.'));
+  sheet.appendChild(add);
+  const status=el('p','decision-feedback','');sheet.appendChild(status);
  };
- btn.onclick=()=>{if(sheet.hidden){build();sheet.hidden=false}else sheet.hidden=true};
+ const openAt=i=>{workspace.dataset.selectedMilestone=String(Math.max(0,Math.min(plan.milestones.length-1,i)));build();sheet.hidden=false};
+ btn.onclick=()=>{if(sheet.hidden)openAt(limit());else sheet.hidden=true};
+ workspace.addEventListener('milestone-selected',e=>{
+  const index=Number(e.detail?.index);
+  if(Number.isInteger(index))openAt(index);
+ });
 }
 const originalRenderPlan=renderPlan;
 renderPlan=function(){originalRenderPlan();renderValidationAdviser();$('#addMilestoneSmart').hidden=!(state.plan&&state.plan.milestones?.length);setupReferenceControls();setupJourneyModes();renderNavigator();drawNavigationRoute();$('#toggleValidation').hidden=!(state.plan&&Array.isArray(state.plan.milestones)&&state.plan.milestones.length);renderValidationLayer();$('#toggleValidation').setAttribute('aria-expanded',String(!!state.validationPanelOpen))};
