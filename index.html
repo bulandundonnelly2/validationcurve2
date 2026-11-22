@@ -1402,7 +1402,8 @@ function joinedRoutePath(points,id){
 }
 function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  if(!steps.length)return;
- const svg=group.ownerSVGElement;
+ const svg=group.ownerSVGElement||$('#planView .map-chart svg');
+ if(!svg)return;
  // The last recorded outcome anchors every route at the same *actual* signal.
  // No synthetic historical milestones are inserted on comparison curves.
  const milestones=state.plan?.milestones||[];
