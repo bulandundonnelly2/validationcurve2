@@ -351,11 +351,18 @@ body.curve-open #planView .journey-panel{
 .milestone-modal-form h2{font:28px/1.2 'DM Serif Display',serif;margin:0;color:#183d2e}
 .milestone-modal-form .modal-helper{margin:0;color:#4c6958;font-size:13px}
 .milestone-modal-form .field{color:#173929;display:grid;gap:6px}
-.milestone-modal-form .field input,.milestone-modal-form .field textarea{box-sizing:border-box;width:100%;padding:10px;border:1px solid #9abb9e;background:#fff;color:#133b29;border-radius:9px}
+.milestone-modal-form .field input,.milestone-modal-form .field textarea,.milestone-modal-form .field select{box-sizing:border-box;width:100%;padding:10px;border:1px solid #9abb9e;background:#fff;color:#133b29;border-radius:9px}
 .milestone-modal-form .field textarea{min-height:95px;resize:vertical}
 .milestone-modal-actions{position:sticky;bottom:-24px;display:flex;justify-content:flex-end;gap:10px;background:#f0f7eb;padding:12px 0;margin-top:4px;border-top:1px solid #c4d9bd}
 .milestone-modal-actions button{padding:10px 16px;border-radius:9px}
 </style><style>
+/* Keep one selected-milestone panel; expand the experiment within it. */
+body.curve-open #planView .journey-panel .inline-edit,
+body.curve-open #planView .journey-panel .inline-actions:not(.milestone-modal-actions){display:none!important}
+body.curve-open #planView .journey-panel .milestone-next-experiment{display:block!important;position:static!important;align-self:stretch;margin:14px 0 0;padding:10px 14px;background:#d9f3b6;color:#163b28;border-radius:10px;border:0;font-weight:700;font-size:14px;cursor:pointer}
+body.curve-open #planView .journey-panel .decision-sheet{position:static!important;inset:auto!important;width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;margin:10px 0 0;padding:16px;border-radius:12px;background:#f6faf3;color:#254b37}
+body.curve-open #planView .journey-panel:has(.decision-sheet:not([hidden])){max-height:calc(100dvh - 110px)!important;overflow-y:auto!important}
+
 body.curve-open #planView .next-experiment-toggle{
  margin-left:12px;padding:3px 10px;border-radius:8px;border:1px solid #9ac7a2;
  background:#285d47;color:#e8f8df;font-size:11px;font-weight:750;cursor:pointer
@@ -505,7 +512,7 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
  const oldEditor=document.getElementById('milestoneTextDialog');if(oldEditor)oldEditor.remove();
  const editorDialog=document.createElement('dialog');editorDialog.id='milestoneTextDialog';editorDialog.className='milestone-text-dialog';
  const directEditor=document.createElement('form');directEditor.className='milestone-modal-form';
- directEditor.innerHTML='<h2>Edit milestone</h2><p class="modal-helper">Changes are saved to this milestone and reflected on the graph.</p><label class="field">Milestone title<input name="title" maxlength="500" required></label><label class="field">Milestone description<textarea name="description" maxlength="900"></textarea></label><label class="field">Evidence text<textarea name="evidence" maxlength="800"></textarea></label><div class="milestone-modal-actions"><button class="cancel" type="button" data-cancel-text>Cancel</button><button class="primary" type="submit">Save changes</button></div>';
+ directEditor.innerHTML='<h2>Edit milestone</h2><p class="modal-helper">Changes are saved to this milestone and reflected on the graph.</p><label class="field">Milestone title<input name="title" maxlength="500" required></label><label class="field">Milestone description<textarea name="description" maxlength="900"></textarea></label><label class="field">Evidence text<textarea name="evidence" maxlength="800"></textarea></label><label class="field">Milestone status<select name="status"><option>Not started</option><option>In progress</option><option>Achieved</option><option>Revisit</option></select></label><div class="milestone-modal-actions"><button class="cancel" type="button" data-cancel-text>Cancel</button><button class="primary" type="submit">Save changes</button></div>';
  editorDialog.appendChild(directEditor);document.body.appendChild(editorDialog);
  story.appendChild(quickEdit);
  const closeDirectEditor=()=>{if(editorDialog.open)editorDialog.close()};
@@ -515,6 +522,7 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
   directEditor.elements.title.value=m.status==='Achieved'?String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim():m.title||'';
   directEditor.elements.description.value=m.detail||m.why||m.target||'';
   directEditor.elements.evidence.value=m.evidence||'';
+  directEditor.elements.status.value=m.status||'Not started';
   directEditor.dataset.descriptionField=m.detail?'detail':m.why?'why':m.target?'target':'detail';
   editorDialog.showModal();
   directEditor.elements.title.focus();
@@ -530,6 +538,8 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
   m.title=m.status==='Achieved'?title.replace(/\s*\(planned\)\s*$/i,'').trim()||title:title;
   m[directEditor.dataset.descriptionField]=directEditor.elements.description.value.trim();
   m.evidence=directEditor.elements.evidence.value.trim();
+  m.status=directEditor.elements.status.value;
+  if(m.status==='Achieved')m.title=m.title.replace(/\s*\(planned\)\s*$/i,'').trim();
   closeDirectEditor();
   save();renderPlan();
   $('#planView g[data-plan-point="'+index+'"]')?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
@@ -1888,14 +1898,17 @@ function renderValidationAdviser(){
  const plan=state.plan,chart=$('#planView .map-chart'),workspace=chart?.closest('.map-workspace');
  if(!plan?.milestones?.length||!workspace)return;
  workspace.querySelector('.decision-sheet')?.remove();
- chart.querySelector('.next-experiment-toggle')?.remove();
+ workspace.querySelector('.next-experiment-toggle')?.remove();
  const btn=document.createElement('button');
  btn.type='button';btn.className='next-experiment-toggle';btn.textContent='Next experiment';
  btn.title='Suggest a test using the evidence available up to the selected milestone';
- chart.querySelector('.chart-topline')?.appendChild(btn);
+ const panel=workspace.querySelector('.journey-panel');
+ if(!panel)return;
+ btn.classList.add('milestone-next-experiment');
+ panel.appendChild(btn);
  const sheet=document.createElement('aside');
  sheet.className='decision-sheet';sheet.hidden=true;sheet.setAttribute('aria-label','Milestone experiment adviser');
- workspace.appendChild(sheet);
+ panel.appendChild(sheet);
  const el=(tag,cls,value)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(value!==undefined)e.textContent=value;return e};
  const isReported=m=>Boolean(String(m.reported_evidence||'').trim())||
   (!plan.fromDocument&&(state.entries||[]).some(e=>!e.demo&&e.linkedMilestone===m.title));
@@ -1985,11 +1998,12 @@ function renderValidationAdviser(){
   sheet.appendChild(add);
   const status=el('p','decision-feedback','');sheet.appendChild(status);
  };
- const openAt=i=>{workspace.dataset.selectedMilestone=String(Math.max(0,Math.min(plan.milestones.length-1,i)));build();sheet.hidden=false};
- btn.onclick=()=>{if(sheet.hidden)openAt(limit());else sheet.hidden=true};
+ const openAt=i=>{workspace.dataset.selectedMilestone=String(Math.max(0,Math.min(plan.milestones.length-1,i)));build();sheet.hidden=false;btn.setAttribute('aria-expanded','true');btn.textContent='Hide experiment';sheet.scrollIntoView({block:'nearest'});};
+ btn.setAttribute('aria-expanded','false');
+ btn.onclick=()=>{if(sheet.hidden)openAt(limit());else{sheet.hidden=true;btn.textContent='Next experiment';btn.setAttribute('aria-expanded','false')}};
  workspace.addEventListener('milestone-selected',e=>{
   const index=Number(e.detail?.index);
-  if(Number.isInteger(index))openAt(index);
+  if(Number.isInteger(index)){workspace.dataset.selectedMilestone=String(index);sheet.hidden=true;btn.textContent='Next experiment';btn.setAttribute('aria-expanded','false')}
  });
 }
 const originalRenderPlan=renderPlan;
