@@ -487,18 +487,15 @@ function validationCompare(){
  let actual=0,expected=0;
  const rows=baseline.rows.map(original=>{
   expected+=Math.max(0,original.value)/5;
-  const m=(p.milestones||[]).find(x=>x._validationId===original.id);
-  if(!m)return {original,status:'Removed',delta:null};
-  const linked=milestoneLinkedEvidence(m),q=milestoneEvidenceQuality(m,linked);
-  const latest=linked.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
-  const rated=latest?entryRating(latest).score:null;
-  const direction=latest&&rated!==null?(rated<0?'negative':rated>0?'positive':'mixed'):(m.reported_evidence?m.evidence_direction:'none');
-  const hasOutcome=['positive','negative','mixed'].includes(direction);
-  const delta=hasOutcome?(direction==='positive'?1:direction==='negative'?-1:0)*estimateMilestone(m).value*q.confidence/5:null;
-  if(delta!==null)actual+=delta;
-  return {original,m,quality:q,delta,status:hasOutcome?'Outcome reported · '+q.band:m.status==='Achieved'?'Achieved status; no scored outcome':m.status||'Not started'};
+  const index=(p.milestones||[]).findIndex(x=>x._validationId===original.id);
+  if(index<0)return {original,status:'Removed',delta:null};
+  const m=p.milestones[index],linked=milestoneLinkedEvidence(m),quality=milestoneEvidenceQuality(m,linked);
+  const impact=milestoneImpact(m,estimateMilestone(m).value,milestoneOutcomeForScoring(m),p.milestones.slice(0,index));
+  actual+=impact.value;
+  return {original,m,quality,delta:impact.achieved?impact.value:null,
+   status:impact.achieved?'Achieved · '+impact.actualBand.label+' · '+quality.band:impact.status+' · forecast only'};
  });
- return {baseline,rows,actual,expected};
+ return {baseline,rows,actual:Number(actual.toFixed(2)),expected:Number(expected.toFixed(2))};
 }
 function adaptiveRouteReview(){
  const type=state.comparisonBusinessType||inferredBusinessType();
@@ -1751,9 +1748,9 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  // Route steps are independent conditional milestone impacts on the same -1..+1 scale.
  // Anchor comparisons at the most recent recorded checkpoint but don't accumulate
  // unrelated future milestone values above the chart's maximum.
- const reported=routeSnapshot().reported;
- const last=reported.at(-1);
- const lastNode=last?nodes[last.i]?.querySelector('circle'):null;
+ const actual=state.plan?.milestones||[];
+ const lastAchieved=[...actual].map((m,i)=>({m,i})).filter(x=>normalizedMilestoneStatus(x.m)==='Achieved').at(-1);
+ const lastNode=lastAchieved?nodes[lastAchieved.i]?.querySelector('circle'):null;
  const startX=lastNode?Number(lastNode.getAttribute('cx')):100;
  const startScore=lastNode?Number(lastNode.parentNode.dataset.signalScore):0;
  const startY=sharedSignalY(Number.isFinite(startScore)?startScore:0,svg);
@@ -1764,7 +1761,7 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  const pts=[[startX,startY]];
  const projected=[];
  steps.forEach((step,i)=>{
-  score=Number((score+Math.min(.12,routeSignalGain(step)*.12)).toFixed(6));
+  score=Number((score+Math.min(1.8,routeSignalGain(step)*1.8)).toFixed(6));
   const progress=dated?Number(step.months_from_start)/duration:(i+1)/steps.length;
   const x=startX+(1550-startX)*Math.max(0,Math.min(1,progress));
   projected.push({step,i,x,y:sharedSignalY(score,svg),score});
@@ -1780,8 +1777,8 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- title.textContent=model.name+' · CONDITIONAL comparison on the same -1 to +1 milestone impact scale as the main curve. '+
-  'Each proposed step adds at most 0.12 conditional impact units and is never treated as observed evidence. '+
+ title.textContent=model.name+' · CONDITIONAL projection using the same cumulative validation axis as actual outcomes. '+
+  'Every proposed step is a forecast, not an achieved result, and does not change the solid actual curve. '+
   shape.reason+' '+(fit.suitability==='low'?'Not suitable currently: '+fit.reason+'. ':'')+
   'None of these future gains are observed evidence.';
  path.appendChild(title);group.appendChild(path);
@@ -1795,7 +1792,7 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
   const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);
   dot.setAttribute('r','6');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width','2');
   const tip=document.createElementNS(ns,'title');
-  tip.textContent=step.title+' · Conditional cumulative milestone impact '+score.toFixed(2)+' relative units · Potential value '+
+  tip.textContent=step.title+' · Conditional projected cumulative impact '+score.toFixed(2)+' relative units · Potential value '+
    routePotentialValue(step).toFixed(1)+'/5 · Unverified proposed milestone. '+shape.reason;
   marker.append(hit,dot,tip);
   const select=()=>openRouteGuidance(model.id,i);
