@@ -11,7 +11,7 @@ function extract(start,end){
  return html.slice(from,to);
 }
 test('Inline app JavaScript parses',()=>{
- const match=html.match(new RegExp('<script\\b[^>]*>([\\s\\S]*?)</script>','i'));
+ const match=html.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i);
  assert.ok(match);
  new vm.Script(match[1]);
 });
