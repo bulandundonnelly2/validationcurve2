@@ -477,14 +477,12 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
   const result=outcome(m);
   const depth=level(m);
   const evidenceEntry=latestEvidence(m);
-  const explicitConfidence=Number(m.evidence_confidence);
-  const confidence=(m.evidence_confidence!==undefined&&m.evidence_confidence!==null&&m.evidence_confidence!==''&&Number.isFinite(explicitConfidence))
-   ?Math.max(0,Math.min(1,explicitConfidence))
-   :(evidenceEntry?0.75:m.reported_evidence?0.55:0);
+  const quality=milestoneEvidenceQuality(m,evidenceFor(m));
+  const confidence=quality.confidence;
   const value=estimateMilestone(m).value;
   const delta=(result==='positive'?1:result==='negative'?-1:0)*value*confidence/5;
   cumulative+=delta;
-  return {result,value:cumulative,delta,confidence,known:!['none','unclear'].includes(result)};
+  return {result,value:cumulative,delta,confidence,quality,known:!['none','unclear'].includes(result)};
  });
  // Plot an explicit evidence-weighted validation signal, never an undefined
  // HIGH/MEDIUM/LOW scale. The units are relative and are not money or success odds.
@@ -525,7 +523,7 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
  const evidenceDescription=i=>{
   const m=plan.milestones[i],observed=cumulativeLevels[i],rating=estimateMilestone(m);
   const impact=observed.delta.toFixed(2);
-  return 'Potential value '+rating.value+'/5. '+(observed.known
+  return 'Potential value '+rating.value+'/5 ('+rating.contextType+'). '+rating.why+' Evidence quality '+observed.quality.score+'/100 ('+observed.quality.band+'). '+observed.quality.notes.join(' ')+' '+(observed.known
     ?'Recorded evidence contribution '+(observed.delta>0?'+':'')+impact+' relative units (confidence '+Math.round(observed.confidence*100)+'%).'
     :'No scored outcome recorded. Position is an illustrative scenario, not achieved validation.');
  };
@@ -678,6 +676,63 @@ function milestoneRelevance(m){
  // meeting a friend or watching a film without endlessly adding keywords.
  return {score:0,reason:'No measurable connection to the venture objectives or validation evidence is described.'};
 }
+
+function contextualMilestoneValue(m,base){
+ const c=planVentureContext(),type=state.comparisonBusinessType||inferredBusinessType();
+ const stage=String(c.stage||'').toLowerCase(),text=[m.title,m.target,m.reported_evidence,m.evidence,m.detail].join(' ').toLowerCase();
+ const has=re=>re.test(text),factors=[];let value=base.value;
+ const commercial=has(/\b(paid|paying|purchase|contract|renewal|revenue|retention|repeat orders?|conversion)\b/);
+ const vanity=has(/\b(sign.?ups?|registrations?|downloads?|followers?|likes?|traffic|impressions?)\b/);
+ const use=has(/\b(active|activation|cohort|retention|repeat use|usage|renewal)\b/);
+ const technical=has(/\b(prototype|field test|pilot|reliab|bench.?test|precision|accuracy|safety|feasibility|regulatory|clinical)\b/);
+ if(vanity&&!commercial&&!use){value=Math.min(value,2);factors.push('Reach or registration alone does not show retention, activation, or willingness to pay.')}
+ if(type==='Software / SaaS'){
+  if(use){value=Math.max(value,4);factors.push('Observed product use and retention are strong SaaS signals.')}
+  if(technical&&!commercial&&!use){value=Math.min(value,3);factors.push('Technical performance alone does not demonstrate SaaS demand.')}
+ }else if(['Deep tech / Research','Hardware / Manufacturing'].includes(type)){
+  if(technical){value=Math.max(value,4);factors.push('Reproducible technical feasibility matters for this venture type.')}
+  if(vanity&&!technical&&!commercial){value=Math.min(value,2);factors.push('Audience attention is not technical feasibility evidence.')}
+ }else if(type==='Agency / Services'&&commercial){
+  value=Math.max(value,4);factors.push('Paid client commitments or repeat engagements directly test service demand.');
+ }else if(type==='Consumer / Retail'&&has(/\b(repeat purchase|repeat orders?|margin|returns|sell.?through)\b/)){
+  value=Math.max(value,4);factors.push('Repurchasing and unit economics are material consumer-market signals.');
+ }
+ if(/\b(idea|discovery|pre.?seed|concept)\b/.test(stage)&&has(/\b(interview|customer discovery|problem validation)\b/)){
+  value=Math.max(value,3);factors.push('Customer discovery reduces early-stage problem uncertainty.');
+ }
+ if(/\b(scale|growth|series|expansion)\b/.test(stage)&&has(/\b(interview|survey)\b/)&&!commercial&&!use){
+  value=Math.min(value,2);factors.push('Interviews alone are limited proof at a scaling stage.');
+ }
+ if(milestoneRelevance(m).score===0)value=0;
+ return {...base,value:Math.max(0,Math.min(5,value)),
+  why:[base.why,...factors].filter(Boolean).join(' '),
+  contextType:type,contextStage:stage||'unspecified',
+  method:'Contextual rule-based estimate, not a verified business valuation.'};
+}
+function milestoneEvidenceQuality(m,linked=[]){
+ const entries=linked.filter(e=>!e.demo),claim=String(m.reported_evidence||'').trim();
+ const source=String(m.evidence_source_type||'founder'),url=String(m.evidence_source_url||'').trim();
+ const method=String(m.evidence_method||'').trim(),date=String(m.evidence_date||entries[0]?.date||'').trim();
+ const sample=Number(m.evidence_sample_size);
+ if(!claim&&!entries.length)return {score:0,confidence:0,band:'No observed result',notes:['Status and planned evidence are not proof.']};
+ let score=claim?20:24,notes=[];
+ if(source==='customer'||source==='system')score+=13;
+ if(source==='independent')score+=20;
+ if(url){score+=9;notes.push('Source reference supplied but not externally verified.')}
+ else notes.push('No source reference supplied.');
+ if(method.length>=15)score+=14;else notes.push('Measurement method missing or limited.');
+ if(/^\d{4}-\d{2}-\d{2}$/.test(date))score+=9;else notes.push('Evidence date is missing.');
+ if(Number.isFinite(sample)&&sample>0)score+=Math.min(12,3+Math.log10(sample)*4);
+ else notes.push('Sample size is missing.');
+ if(entries.length)score+=8;
+ score=Math.round(Math.min(85,score));
+ const band=score>=65?'Documented / unverified':score>=40?'Partially documented':'Founder reported / limited';
+ notes.unshift('This score measures supplied provenance metadata, not the truth of the outcome.');
+ return {score,confidence:score/100,band,notes};
+}
+function milestoneLinkedEvidence(m){
+ return state.plan?.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title);
+}
 function assessedMilestoneOverride(m){
  const a=m.value_assessment;
  if(!a||!Number.isInteger(a.potential_value)||!Number.isInteger(a.difficulty))return null;
@@ -685,7 +740,7 @@ function assessedMilestoneOverride(m){
 }
 function estimateMilestone(m){
  const override=assessedMilestoneOverride(m);
- if(override)return override;
+ if(override)return contextualMilestoneValue(m,override);
  const text=[m.title,m.target,m.reported_evidence,m.evidence].filter(Boolean).join(' ').toLowerCase();
  const relevance=milestoneRelevance(m);
  if(relevance.score===0)return {value:0,difficulty:1,why:relevance.reason+'. No validation progress should be credited.'};
@@ -718,7 +773,7 @@ function estimateMilestone(m){
  }
  if(/\b(enterprise|national|international|funding round|clinical|regulatory|manufacturing scale|multiple markets)\b/.test(text))difficulty=5;
  if(/\b(failed|did not work|not paying|rejected|lost customers|cancelled)\b/.test(text))scoreDetails.push('Negative outcome: significance may be high even if progress is negative.');
- return {value:Math.max(1,Math.min(5,value)),difficulty:Math.max(1,Math.min(5,difficulty)),why:scoreDetails.join(' ')||'Provisional estimate from milestone description; review relevance and evidence.'};
+ return contextualMilestoneValue(m,{value:Math.max(1,Math.min(5,value)),difficulty:Math.max(1,Math.min(5,difficulty)),why:scoreDetails.join(' ')||'Provisional estimate from milestone description; review relevance and evidence.'});
 }
 function suggestedFor(plan,ambition){
  const combined=(plan.milestones||[]).map(m=>m.title).join(' ').toLowerCase();
