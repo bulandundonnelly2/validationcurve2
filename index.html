@@ -2418,7 +2418,7 @@ function applyJourneyMode(){
   // closes the visual link; evidence-only scores and the Evidence view still
   // depend on observed results, not on this status flag.
   const current={x:Number(circle.getAttribute('cx')),y:Number(circle.getAttribute('cy')),reported:normalizedMilestoneStatus(m)==='Achieved'};
-  if(previousValid&&(!previousValid.reported||!current.reported)){
+  if(previousValid&&!current.reported){
    const midpoint=(previousValid.x+current.x)/2;
    proposedSegments.push('M'+previousValid.x+' '+previousValid.y+' C'+midpoint+' '+previousValid.y+' '+midpoint+' '+current.y+' '+current.x+' '+current.y);
   }
