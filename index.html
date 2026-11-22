@@ -784,7 +784,7 @@ box.innerHTML='<div class="milestone-map"><div class="map-header"><div class="ma
    directEditor.elements[field].value=m[field]??(field==='evidence_source_type'?'founder':field==='evidence_direction'?'unclear':'');
   }
   directEditor.elements.status.value=m.status||'Not started';
-  const autoImpact=milestoneImpacts[selected];
+  const autoImpact=milestoneImpact({...m,manual_impact:undefined},estimateMilestone(m).value,milestoneOutcomeForScoring(m),plan.milestones.slice(0,selected));
   directEditor.querySelector('[data-automatic-impact]').textContent='Automatic: '+fmtScore(autoImpact.hasScoredOutcome?autoImpact.value:autoImpact.automaticForecast??autoImpact.projected)+' · '+(autoImpact.hasScoredOutcome?'assessed outcome':'conditional, unverified');
   directEditor.elements.manual_impact.value=manualMilestoneImpact(m)===null?'':String(m.manual_impact);
   directEditor.elements.manual_impact_reason.value=m.manual_impact_reason||'';
@@ -1113,7 +1113,7 @@ function milestoneImpact(m,value,result,prior=[]){
  awarded=Number(awarded.toFixed(2));
  const notes=[];
  if(userImpact!==null)notes.push('USER-ADJUSTED impact '+(userImpact>=0?'+':'')+userImpact.toFixed(2)+' relative units; this is founder-selected, not an independently verified score. '+String(m.manual_impact_reason||'').trim());
- if(activityCeiling)notes.push(activityCeiling.reason+' Activity-level ceilings apply even when the AI assigns a high potential value.');
+ if(activityCeiling)notes.push(activityCeiling.reason+(userImpact===null?' Automatic activity ceilings apply even when the AI assigns a high potential value.':' The user has explicitly overridden the automatic activity ceiling; this is not independently verified.'));
  if(!aiAssessment)notes.push('Contextual rules were used; no stored AI assessment for this milestone.');
  else notes.push('AI-assisted potential assessment: '+aiAssessment);
  if(type)notes.push('Business model: '+type+'.');
