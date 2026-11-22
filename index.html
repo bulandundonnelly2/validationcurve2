@@ -621,7 +621,7 @@ function setupValidationExtras(){
  document.getElementById('planActualButton').hidden=!visible;
  document.getElementById('investorReportButton').hidden=!visible;
 }
-function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=state.plan;const hasPlan=!!(plan&&Array.isArray(plan.milestones)&&plan.milestones.length);if(hasPlan){let titlesUpdated=false;plan.milestones.forEach(m=>{if(m.status!=='Achieved')return;const clean=String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim();if(clean&&clean!==m.title){m.title=clean;titlesUpdated=true}});if(titlesUpdated)save();}$('#openPlan').hidden=!hasPlan;$('#planForm').hidden=hasPlan;$('#cancelPlan').hidden=!hasPlan;if(!plan||!Array.isArray(plan.milestones)||!plan.milestones.length){document.body.classList.remove('curve-open');box.innerHTML='<div class="curve-placeholder" role="img" aria-label="Your proposed validation curve will appear here"><svg viewBox="0 0 800 270" preserveAspectRatio="none" aria-hidden="true"><path d="M35 45H765 M35 105H765 M35 165H765 M35 225H765" fill="none" stroke="#d7e8d4" stroke-dasharray="4 7"/><circle cx="125" cy="165" r="9" fill="#d8e9d4"/><circle cx="300" cy="165" r="9" fill="#d8e9d4"/><circle cx="475" cy="165" r="9" fill="#d8e9d4"/><circle cx="650" cy="165" r="9" fill="#d8e9d4"/></svg><div class="curve-empty-text"><b>Your curve starts here</b><span>Describe your idea or upload a document.</span></div></div><details class="manual-start"><summary>Or add a milestone yourself</summary><button class="cancel" id="startBlankPlan" type="button">＋ Add my own milestone</button></details>';$('#startBlankPlan').onclick=()=>{state.plan={summary:'A pathway you created for your own venture.',milestones:[{title:'My first milestone',timeframe:'',target:'',evidence:'',assumption:'',status:'Not started'}]};save();renderPlan()};return}document.body.classList.add('curve-open');const n=plan.milestones.length;const evidenceFor=m=>(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));const latestEvidence=m=>evidenceFor(m)[0];const planHasEvidence=plan.milestones.some(m=>Boolean(m.reported_evidence)||evidenceFor(m).length>0);
+function renderPlan(){document.querySelector('#planView .map-chart')?.dispatchEvent(new Event('curve-layout-dispose'));ensureValidationBaseline();const box=$('#planView'), plan=state.plan;const hasPlan=!!(plan&&Array.isArray(plan.milestones)&&plan.milestones.length);if(hasPlan){let titlesUpdated=false;plan.milestones.forEach(m=>{if(m.status!=='Achieved')return;const clean=String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim();if(clean&&clean!==m.title){m.title=clean;titlesUpdated=true}});if(titlesUpdated)save();}$('#openPlan').hidden=!hasPlan;$('#planForm').hidden=hasPlan;$('#cancelPlan').hidden=!hasPlan;if(!plan||!Array.isArray(plan.milestones)||!plan.milestones.length){document.body.classList.remove('curve-open');box.innerHTML='<div class="curve-placeholder" role="img" aria-label="Your proposed validation curve will appear here"><svg viewBox="0 0 800 270" preserveAspectRatio="none" aria-hidden="true"><path d="M35 45H765 M35 105H765 M35 165H765 M35 225H765" fill="none" stroke="#d7e8d4" stroke-dasharray="4 7"/><circle cx="125" cy="165" r="9" fill="#d8e9d4"/><circle cx="300" cy="165" r="9" fill="#d8e9d4"/><circle cx="475" cy="165" r="9" fill="#d8e9d4"/><circle cx="650" cy="165" r="9" fill="#d8e9d4"/></svg><div class="curve-empty-text"><b>Your curve starts here</b><span>Describe your idea or upload a document.</span></div></div><details class="manual-start"><summary>Or add a milestone yourself</summary><button class="cancel" id="startBlankPlan" type="button">＋ Add my own milestone</button></details>';$('#startBlankPlan').onclick=()=>{state.plan={summary:'A pathway you created for your own venture.',milestones:[{title:'My first milestone',timeframe:'',target:'',evidence:'',assumption:'',status:'Not started'}]};save();renderPlan()};return}document.body.classList.add('curve-open');const n=plan.milestones.length;const evidenceFor=m=>(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));const latestEvidence=m=>evidenceFor(m)[0];const planHasEvidence=plan.milestones.some(m=>Boolean(m.reported_evidence)||evidenceFor(m).length>0);
  const initialVenture=!planHasEvidence;
  const statusColor=m=>m.status==='Achieved'?'#b9f18f':m.status==='In progress'?'#ff9e8b':m.status==='Revisit'?'#ffd08a':'#a4bbb0';
  const level=m=>{const v=Number(m.validation_level);return Number.isInteger(v)&&v>=1&&v<=5?v:null};
@@ -866,7 +866,7 @@ $('#planForm').onsubmit=async e=>{e.preventDefault();const file=$('#planFile').f
  state.comparisonCurves=[];
  state.journeyView='full';
  chartZoom=1;
- save();document.body.classList.remove('curve-editing');renderPlan();$('#planForm').hidden=true;$('#planForm').reset()}catch(err){$('#planStatus').textContent=err.name==='AbortError'?'Analysis timed out while processing the file. Your current curve is safe; try again or use a shorter deck.':(err.message||'Could not read the document.');}finally{clearTimeout(timeoutId);document.body.classList.remove('curve-loading');button.disabled=false;button.textContent='Create curve ↗';$('#planFile').disabled=false}};
+ save();document.body.classList.remove('curve-editing');$('#planForm').hidden=true;renderPlan();$('#planForm').reset();scheduleChartFit()}catch(err){$('#planStatus').textContent=err.name==='AbortError'?'Analysis timed out while processing the file. Your current curve is safe; try again or use a shorter deck.':(err.message||'Could not read the document.');}finally{clearTimeout(timeoutId);document.body.classList.remove('curve-loading');button.disabled=false;button.textContent='Create curve ↗';$('#planFile').disabled=false}};
 
 const ambitionProfiles=[
 {name:'Conservative',description:'Low-cost, practical tests with short feedback loops.',difficulty:2},
@@ -1519,7 +1519,25 @@ function setupChartZoom(){
   controls.querySelector('[data-zoom="out"]').addEventListener('click',()=>setChartZoom(chartZoom-.2));
   controls.querySelector('[data-zoom="reset"]').addEventListener('click',()=>{chartZoom=1;applyChartZoom();chart.scrollLeft=0;chart.scrollTop=0});
  }
- applyChartZoom();
+ // On initial document upload the plan form has only just been hidden.
+ // Wait for layout before measuring: a zero-sized chart otherwise uses the
+ // 320px fallback, leaving the curve tiny despite the zoom control saying 100%.
+ scheduleChartFit();
+ if(typeof ResizeObserver==='function'){
+  const observer=new ResizeObserver(()=>scheduleChartFit());
+  observer.observe(chart);
+  chart.addEventListener('curve-layout-dispose',()=>observer.disconnect(),{once:true});
+ }
+}
+let pendingChartFit=false;
+function scheduleChartFit(){
+ if(pendingChartFit)return;
+ pendingChartFit=true;
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  pendingChartFit=false;
+  const chart=$('#planView .map-chart');
+  if(chart&&chart.clientWidth>0&&chart.clientHeight>0)applyChartZoom();
+ }));
 }
 function applyChartZoom(){
  const chart=$('#planView .map-chart'),svg=chart?.querySelector('svg');
@@ -1527,6 +1545,9 @@ function applyChartZoom(){
  const frame=chartFrame();
  // Match physical SVG dimensions to its viewBox. Both axes use ONE scale,
  // so circles remain round and route positions remain unmodified.
+ // Never fit a zero-sized or hidden chart: fallback measurements here
+ // previously caused new uploads to render at miniature dimensions.
+ if(chart.clientWidth<=0||chart.clientHeight<=0)return;
  const usableWidth=Math.max(320,chart.clientWidth-20);
  // Fit the complete drawing inside the available chart height, not merely its width.
  // Leave room for the chart heading and zoom controls.
