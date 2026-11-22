@@ -551,7 +551,7 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
  const oldEditor=document.getElementById('milestoneTextDialog');if(oldEditor)oldEditor.remove();
  const editorDialog=document.createElement('dialog');editorDialog.id='milestoneTextDialog';editorDialog.className='milestone-text-dialog';
  const directEditor=document.createElement('form');directEditor.className='milestone-modal-form';
- directEditor.innerHTML='<h2>Edit milestone</h2><p class="modal-helper">Changes are saved to this milestone and reflected on the graph.</p><label class="field">Milestone title<input name="title" maxlength="500" required></label><label class="field">Milestone description<textarea name="description" maxlength="900"></textarea></label><label class="field">Evidence text<textarea name="evidence" maxlength="800"></textarea></label><label class="field">Milestone status<select name="status"><option>Not started</option><option>In progress</option><option>Achieved</option><option>Revisit</option></select></label><div class="milestone-modal-actions"><button class="cancel" type="button" data-cancel-text>Cancel</button><button class="primary" type="submit">Save changes</button></div>';
+ directEditor.innerHTML='<h2>Edit milestone</h2><p class="modal-helper">Changes are saved to this milestone and reflected on the graph.</p><label class="field">Milestone title<input name="title" maxlength="500" required></label><label class="field">Milestone description<textarea name="description" maxlength="900"></textarea></label><label class="field">Planned evidence<textarea name="evidence" maxlength="800"></textarea></label><label class="field">Observed outcome (not planned evidence)<textarea name="reported_evidence" maxlength="1200" placeholder="What actually happened?"></textarea></label><label class="field">Evidence source<select name="evidence_source_type"><option value="founder">Founder-reported</option><option value="customer">Customer / participant</option><option value="system">Instrumented system data</option><option value="independent">Independent third party</option></select></label><label class="field">Source reference / document URL<input name="evidence_source_url" type="text" maxlength="800" placeholder="Optional source or document link"></label><label class="field">How was this measured?<textarea name="evidence_method" maxlength="500" placeholder="Sample, process, measurement criteria"></textarea></label><label class="field">Evidence date<input name="evidence_date" type="date"></label><label class="field">Sample size<input name="evidence_sample_size" type="number" min="0" step="1"></label><label class="field">Result direction<select name="evidence_direction"><option value="unclear">Inconclusive / not assessed</option><option value="positive">Supports hypothesis</option><option value="mixed">Mixed</option><option value="negative">Contradicts hypothesis</option></select></label><label class="field">Milestone status<select name="status"><option>Not started</option><option>In progress</option><option>Achieved</option><option>Revisit</option></select></label><div class="milestone-modal-actions"><button class="cancel" type="button" data-cancel-text>Cancel</button><button class="primary" type="submit">Save changes</button></div>';
  editorDialog.appendChild(directEditor);document.body.appendChild(editorDialog);
  story.appendChild(quickEdit);
  const closeDirectEditor=()=>{if(editorDialog.open)editorDialog.close()};
@@ -581,6 +581,9 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
   directEditor.elements.title.value=m.status==='Achieved'?String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim():m.title||'';
   directEditor.elements.description.value=m.detail||m.why||m.target||'';
   directEditor.elements.evidence.value=m.evidence||'';
+  for(const field of ['reported_evidence','evidence_source_type','evidence_source_url','evidence_method','evidence_date','evidence_sample_size','evidence_direction']){
+   directEditor.elements[field].value=m[field]??(field==='evidence_source_type'?'founder':field==='evidence_direction'?'unclear':'');
+  }
   directEditor.elements.status.value=m.status||'Not started';
   directEditor.dataset.descriptionField=m.detail?'detail':m.why?'why':m.target?'target':'detail';
   editorDialog.showModal();
@@ -597,6 +600,9 @@ function renderPlan(){const box=$('#planView'), plan=state.plan;const hasPlan=!!
   m.title=m.status==='Achieved'?title.replace(/\s*\(planned\)\s*$/i,'').trim()||title:title;
   m[directEditor.dataset.descriptionField]=directEditor.elements.description.value.trim();
   m.evidence=directEditor.elements.evidence.value.trim();
+  for(const field of ['reported_evidence','evidence_source_type','evidence_source_url','evidence_method','evidence_date','evidence_direction'])m[field]=directEditor.elements[field].value.trim();
+  const sample=directEditor.elements.evidence_sample_size.value.trim();
+  m.evidence_sample_size=sample===''?null:Math.max(0,Math.trunc(Number(sample)||0));
   m.status=directEditor.elements.status.value;
   if(m.status==='Achieved')m.title=m.title.replace(/\s*\(planned\)\s*$/i,'').trim();
   closeDirectEditor();
