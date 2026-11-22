@@ -661,7 +661,7 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
   const inner=achieved?color:impact.status==='In progress'?color:'#153a2d';
   const innerOpacity=impact.pendingEvidence?'.65':achieved?'1':impact.status==='In progress'?'.5':'1';
   const strokeDash=achieved?'':impact.status==='In progress'?'stroke-dasharray="3 3"':'stroke-dasharray="5 4"';
-  return '<g data-plan-point="'+i+'" data-signal-score="'+plotValues[i]+'" role="button" tabindex="0" aria-label="View milestone '+(i+1)+': '+esc(plan.milestones[i].title)+'" style="cursor:pointer">'+
+  return '<g data-plan-point="'+i+'" data-signal-score="'+projectedValues[i]+'" role="button" tabindex="0" aria-label="View milestone '+(i+1)+': '+esc(plan.milestones[i].title)+'" style="cursor:pointer">'+
    '<title>'+esc(evidenceDescription(i))+'</title>'+
    '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(radius+8)+'" fill="'+color+'" opacity=".10"/>'+ring+
    '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+radius+'" fill="'+inner+'" fill-opacity="'+innerOpacity+'" stroke="'+color+'" stroke-width="3" '+strokeDash+'/>'+
@@ -1788,12 +1788,9 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  if(!steps.length)return;
  const svg=group.ownerSVGElement||$('#planView .map-chart svg');
  if(!svg)return;
- // Route steps are independent conditional milestone impacts on the same -1..+1 scale.
- // Anchor comparisons at the most recent recorded checkpoint but don't accumulate
- // unrelated future milestone values above the chart's maximum.
- const actual=state.plan?.milestones||[];
- const lastAchieved=[...actual].map((m,i)=>({m,i})).filter(x=>normalizedMilestoneStatus(x.m)==='Achieved').at(-1);
- const lastNode=lastAchieved?nodes[lastAchieved.i]?.querySelector('circle'):null;
+ // Route comparisons are conditional extensions of the visible journey,
+ // anchored at its last milestone rather than at an earlier achieved checkpoint.
+ const lastNode=nodes.length?nodes[nodes.length-1].querySelector('circle'):null;
  const startX=lastNode?Number(lastNode.getAttribute('cx')):100;
  const startScore=lastNode?Number(lastNode.parentNode.dataset.signalScore):0;
  const startY=sharedSignalY(Number.isFinite(startScore)?startScore:0,svg);
