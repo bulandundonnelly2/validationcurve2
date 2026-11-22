@@ -2414,7 +2414,10 @@ function applyJourneyMode(){
   if(!visible[i]||milestoneRelevance(m).score===0)return;
   const circle=node.querySelector('circle');
   if(!circle)return;
-  const current={x:Number(circle.getAttribute('cx')),y:Number(circle.getAttribute('cy')),reported:!!stages[i]?.reported};
+  // The provisional connector is only for unachieved segments. "Achieved"
+  // closes the visual link; evidence-only scores and the Evidence view still
+  // depend on observed results, not on this status flag.
+  const current={x:Number(circle.getAttribute('cx')),y:Number(circle.getAttribute('cy')),reported:normalizedMilestoneStatus(m)==='Achieved'};
   if(previousValid&&(!previousValid.reported||!current.reported)){
    const midpoint=(previousValid.x+current.x)/2;
    proposedSegments.push('M'+previousValid.x+' '+previousValid.y+' C'+midpoint+' '+previousValid.y+' '+midpoint+' '+current.y+' '+current.x+' '+current.y);
