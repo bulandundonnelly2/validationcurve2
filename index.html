@@ -1307,6 +1307,59 @@ function routeEvidenceWeight(id,stage,total,step){
  if(id==='long')return .48+2.15*Math.pow(t,2);
  return 1;
 }
+// The actual curve and every route projection share the same evidence-signal units.
+// Proposed milestones do not add observed progress: half-weight gains are conditional.
+function routePotentialValue(step){
+ const explicit=Number(step.value);
+ if(step.value!==undefined&&step.value!==null&&step.value!==''&&Number.isFinite(explicit))
+  return Math.max(0,Math.min(5,explicit));
+ const proxy={title:String(step.title||''),target:String(step.success_criteria||step.target||step.detail||''),
+  evidence:String(step.evidence||''),why:String(step.rationale||'')};
+ return milestoneRelevance(proxy).score>0?estimateMilestone(proxy).value:0;
+}
+function routeSignalGain(step){return routePotentialValue(step)/10}
+function sharedSignalY(value,svg){
+ const min=Number(svg.dataset.signalMin),max=Number(svg.dataset.signalMax);
+ return 485-(value-min)/Math.max(1,max-min)*385;
+}
+function routeShapeCheck(id,steps){
+ // Shape testing is separate from the validation-signal axis.
+ // Compare actual numeric target movement over time; never force the visual curve.
+ const values=steps.map(s=>Number(s.target_value));
+ const times=steps.map(s=>Number(s.months_from_start));
+ if(steps.length<4||values.some(v=>!Number.isFinite(v))||
+   times.some((t,i)=>!Number.isFinite(t)||(i>0&&t<=times[i-1])))
+  return {status:'unknown',reason:'Not enough ordered, numeric targets with dates to establish this route shape.'};
+ const gains=values.slice(1).map((v,i)=>v-values[i]);
+ if(gains.some(g=>g<0)||gains.every(g=>g===0))
+  return {status:'unknown',reason:'Target direction or meaningful growth is not established; the shape cannot be verified.'};
+ const total=gains.reduce((a,b)=>a+b,0),n=gains.length;
+ const first=gains.slice(0,Math.ceil(n/2)).reduce((a,b)=>a+b,0)/total;
+ const last=gains.slice(Math.floor(n*.6)).reduce((a,b)=>a+b,0)/total;
+ const rates=gains.map((g,i)=>g/(times[i+1]-times[i]));
+ const early=rates.slice(0,Math.max(1,Math.floor(n/2))).reduce((a,b)=>a+b,0)/Math.max(1,Math.floor(n/2));
+ const late=rates.slice(Math.floor(n/2)).reduce((a,b)=>a+b,0)/Math.max(1,n-Math.floor(n/2));
+ let matches=false;
+ if(id==='hockey')matches=first<=.30&&late>=early*2.2&&last>=.50;
+ else if(id==='s'){
+  const middle=rates.slice(Math.floor(n/3),Math.max(Math.floor(n/3)+1,Math.ceil(n*2/3)));
+  const peak=Math.max(...middle);
+  matches=peak>rates[0]*1.3&&peak>rates.at(-1)*1.3;
+ }else if(id==='steps')matches=gains.filter(g=>g<=total*.035).length>=Math.floor(n/3);
+ else if(id==='long')matches=first<=.25&&late>=early*1.7;
+ else if(id==='steady'){
+  const mean=rates.reduce((a,b)=>a+b,0)/n;
+  const spread=Math.sqrt(rates.reduce((a,b)=>a+(b-mean)**2,0)/n);
+  matches=mean>0&&spread/mean<=.50;
+ }
+ return {status:matches?'supported':'mismatch',
+  reason:matches?'The supplied target changes are consistent with this route pattern. They remain proposed, not achieved.':
+   'The supplied milestone targets and timing do not currently produce the named growth pattern.'};
+}
+function routeComparisonSteps(id,snapshot){
+ const generated=tailoredRoute(id);
+ return generated?.steps?.length?generated.steps:selectRouteMilestones(id,snapshot);
+}
 function routeAchievedLevels(id,historical,future,startY){
  const all=[
   ...historical.map(h=>({value:h.expected.value||2,step:h.expected,history:true})),
@@ -1340,40 +1393,63 @@ function joinedRoutePath(points,id){
  }
  return d;
 }
-function plotIntelligentRoute(group,model,route,nodes,ns){
- const steps=route.steps||[];if(!steps.length)return;
- const startCircle=nodes[0]?.querySelector('circle');
- const x0=startCircle?Number(startCircle.getAttribute('cx')):75;
- const y0=Math.max(345,Math.min(480,startCircle?Number(startCircle.getAttribute('cy')):423));
- // Display each route's elapsed milestone journey across the full width.
- // This is a SHAPE view: x = fraction of this route's timeline; y = fraction
- // of this route's own cumulative target, not a common absolute business metric.
- // Raw month and absolute business target remain attached to each checkpoint.
- const months=Number(steps.at(-1)?.months_from_start)||1;
- const sharedMax=null;
- const pts=window.ValidationRouteEngine?.layout(route,x0,y0,1550,months);
- if(!pts){console.warn('Invalid route coordinates',model.id);return}
+function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
+ if(!steps.length)return;
+ const svg=group.ownerSVGElement;
+ // The last recorded outcome anchors every route at the same *actual* signal.
+ // No synthetic historical milestones are inserted on comparison curves.
+ const milestones=state.plan?.milestones||[];
+ const reported=routeSnapshot().reported;
+ const last=reported.at(-1);
+ const lastNode=last?nodes[last.i]?.querySelector('circle'):null;
+ const startX=lastNode?Number(lastNode.getAttribute('cx')):100;
+ const startY=lastNode?Number(lastNode.getAttribute('cy')):sharedSignalY(0,svg);
+ const startScore=lastNode?Number(lastNode.parentNode.dataset.signalScore):0;
+ let score=Number.isFinite(startScore)?startScore:0;
+ const dated=steps.every((step,i)=>Number.isFinite(Number(step.months_from_start))&&
+  (i===0||Number(step.months_from_start)>Number(steps[i-1].months_from_start)));
+ const duration=dated?Math.max(1,Number(steps.at(-1).months_from_start)):steps.length;
+ const pts=[[startX,startY]];
+ const projected=[];
+ steps.forEach((step,i)=>{
+  score+=routeSignalGain(step);
+  const progress=dated?Number(step.months_from_start)/duration:(i+1)/steps.length;
+  const x=startX+(1550-startX)*Math.max(0,Math.min(1,progress));
+  projected.push({step,i,x,y:sharedSignalY(score,svg),score});
+  pts.push([x,sharedSignalY(score,svg)]);
+ });
+ const shape=routeShapeCheck(model.id,steps);
+ const fit=effectiveRouteFit(model.id,route);
  const path=document.createElementNS(ns,'path');
  path.setAttribute('class','reference-path named-route-path');
  path.setAttribute('data-route-shape',model.id);
+ path.setAttribute('data-shape-status',shape.status);
  path.setAttribute('fill','none');path.setAttribute('stroke',model.color);
  path.setAttribute('stroke-width','3');path.setAttribute('stroke-dasharray','5 5');
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
- const fit=effectiveRouteFit(model.id,route);
- title.textContent=(fit.suitability==='low'?'NOT SUITABLE CURRENTLY: '+fit.reason+'. ':'')+model.name+' · '+route.metric+' ('+route.metric_unit+'). '+(route.shape_assessment?.matches===false?'Caution: the proposed milestones do not yet support this named trajectory. '+route.shape_assessment.reason+'. ':'')+'Horizontal: percentage of this route duration ('+months+' months total). Vertical: percentage of its proposed cumulative target. Select a point to see actual target and month; relative curves are not comparable forecasts.';
+ title.textContent=model.name+' · CONDITIONAL comparison on the same relative validation-signal units as the actual curve. '+
+  'Each proposed milestone contributes only half its estimated potential value (value/10). '+
+  shape.reason+' '+(fit.suitability==='low'?'Not suitable currently: '+fit.reason+'. ':'')+
+  'None of these future gains are observed evidence.';
  path.appendChild(title);group.appendChild(path);
- steps.forEach((step,i)=>{
-  const [x,y]=pts[i+1];
-  const g=document.createElementNS(ns,'g');g.setAttribute('tabindex','0');g.setAttribute('role','button');g.style.cursor='pointer';
-  g.setAttribute('aria-label',model.name+' checkpoint '+(i+1)+': '+step.title+', '+step.status+', conditional target '+step.target_value+' '+route.metric_unit+' at month '+step.months_from_start);
-  const hit=document.createElementNS(ns,'circle');hit.setAttribute('cx',x);hit.setAttribute('cy',y);hit.setAttribute('r',12);hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
-  const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);dot.setAttribute('r',6);dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width',2);
-  const tip=document.createElementNS(ns,'title');tip.textContent=step.title+' · '+step.status+' · Month '+step.months_from_start+' · Target '+step.target_value+' '+route.metric_unit+' · Success criteria: '+step.success_criteria+' · Evidence: '+step.evidence+' · Difficulty '+step.difficulty+'/5. Not achieved.';
-  g.append(hit,dot,tip);
+ projected.forEach(({step,i,x,y,score})=>{
+  const marker=document.createElementNS(ns,'g');
+  marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
+  marker.setAttribute('aria-label',model.name+' proposed checkpoint '+(i+1)+': '+step.title);
+  marker.style.cursor='pointer';
+  const hit=document.createElementNS(ns,'circle');hit.setAttribute('cx',x);hit.setAttribute('cy',y);
+  hit.setAttribute('r','12');hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
+  const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);
+  dot.setAttribute('r','6');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width','2');
+  const tip=document.createElementNS(ns,'title');
+  tip.textContent=step.title+' · Conditional validation signal '+score.toFixed(2)+' relative units · Potential value '+
+   routePotentialValue(step).toFixed(1)+'/5 · Unverified proposed milestone. '+shape.reason;
+  marker.append(hit,dot,tip);
   const select=()=>openRouteGuidance(model.id,i);
-  g.addEventListener('click',select);g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select()}});
-  group.appendChild(g);
+  marker.addEventListener('click',select);
+  marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select()}});
+  group.appendChild(marker);
  });
 }
 function drawReferenceCurves(){
@@ -1397,100 +1473,9 @@ function drawReferenceCurves(){
  group.setAttribute('id','referenceOverlays');
  group.setAttribute('aria-label','Route milestones compared against reported business milestones');
  const models=referenceModels.filter(model=>selected.includes(model.id));
- models.forEach((model,routeIndex)=>{
-  const intelligence=tailoredRoute(model.id);
-  if(intelligence){plotIntelligentRoute(group,model,intelligence,nodes,ns);return}
-  const routeStepsNow=selectRouteMilestones(model.id,snap);
-  // Every strategic route is a full comparison journey, beginning at the
-  // same first-business-milestone position as the real validation curve.
-  // Historic alternative checkpoints compare what that strategy would have
-  // required; future checkpoints continue from the historic alternative path.
-  const referenceEndX=1550;
-  const firstNode=nodes[0]?.querySelector('circle');
-  const firstX=firstNode?Number(firstNode.getAttribute('cx')):75;
-  const firstY=firstNode?Number(firstNode.getAttribute('cy')):423;
-  const routeOffsets={steady:-7,hockey:10,s:-2,steps:4,long:15};
-  const routeStartY=Math.max(345,Math.min(480,firstY+(routeOffsets[model.id]||0)*3.2));
-  const historicPoints=[
-   ...(nodes[0]&&state.plan?.milestones?.[0]?[{
-    i:0,x:firstX,actualY:firstY,milestone:state.plan.milestones[0]
-   }]:[]),
-   ...reported.filter(o=>o.i!==0).map(o=>({i:o.i,x:o.x,actualY:o.y,milestone:o.milestone}))
-  ];
-  const historical=historicPoints.map((o,index)=>({
-   ...o,
-   // Keep the first comparison on the common origin; offset later circles
-   // so the user's milestones remain selectable.
-   x:index===0?o.x:o.x+14,
-   expected:expectedRouteMilestone(model.id,index,historicPoints.length)
-  }));
-  const lastHistoricalX=historical.at(-1)?.x??firstX;
-  const futureStartX=Math.max(lastHistoricalX+25,anchorX+25,firstX+80);
-  const future=routeStepsNow.map((step,index)=>({
-   x:futureStartX+(referenceEndX-futureStartX)*(index+1)/Math.max(1,routeStepsNow.length),
-   step,index
-  }));
-  // Reserve a modest but visible early climb, leaving substantial headroom for
-  // the genuine later growth milestones. Never divide all available height
-  // equally across a long list of historic observations.
-  const totalRise=Math.max(0,routeStartY-28);
-  const historicalRise=historical.length>1?totalRise*.30:0;
-  const historicalWeights=historical.map((h,i)=>
-   Math.max(.5,Number(h.expected.value)||2)*
-   routeEvidenceWeight(model.id,i,Math.max(2,historical.length),h.expected));
-  const historicTotal=historicalWeights.reduce((sum,v)=>sum+v,0)||1;
-  let historicProgress=0;
-  historical.forEach((h,i)=>{
-   // First checkpoint is the shared origin, with no invented achievement.
-   if(i>0)historicProgress+=historicalWeights[i];
-   h.y=routeStartY-historicalRise*historicProgress/historicTotal;
-  });
-  const futureBase=historical.at(-1)?.y??routeStartY;
-  const futureHeights=routeAchievedLevels(model.id,[],future,futureBase);
-  future.forEach((f,i)=>f.y=futureHeights[i]);
-  const pathPoints=[[firstX,routeStartY],
-   ...historical.filter((h,i)=>i>0).map(h=>[h.x,h.y]),
-   ...future.map(f=>[f.x,f.y])];
-  const path=document.createElementNS(ns,'path');
-  path.setAttribute('class','reference-path named-route-path');
-  path.setAttribute('data-route-shape',model.id);
-  path.setAttribute('stroke',model.color);
-  path.setAttribute('stroke-width','3');
-  path.setAttribute('stroke-dasharray','5 5');
-  path.setAttribute('fill','none');
-  path.setAttribute('d',joinedRoutePath(pathPoints,model.id));
-  const label=document.createElementNS(ns,'title');
-  label.textContent=model.name+': alternative validation journey from your first milestone, through historical comparison checkpoints and '+future.length+' proposed future achievements. No alternative outcome is assumed achieved.';
-  path.appendChild(label);group.appendChild(path);
-  historical.forEach(o=>{
-   const marker=document.createElementNS(ns,'g');
-   marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
-   marker.setAttribute('aria-label',model.name+' historical comparison: '+o.expected.title);
-   marker.style.cursor='pointer';
-   const hit=document.createElementNS(ns,'circle');hit.setAttribute('cx',o.x);hit.setAttribute('cy',o.y);
-   hit.setAttribute('r','10');hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
-   const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',o.x);dot.setAttribute('cy',o.y);
-   dot.setAttribute('r','4.5');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#15382c');dot.setAttribute('stroke-width','1.2');
-   const tt=document.createElementNS(ns,'title');
-   tt.textContent='If following '+model.name+' at milestone '+(o.i+1)+': '+o.expected.example+' | Required evidence: '+o.expected.evidence+' | Value '+o.expected.value+'/5 · Difficulty '+o.expected.difficulty+'/5. Alternative, not achieved.';
-   marker.append(hit,dot,tt);
-   marker.addEventListener('click',()=>openHistoricalComparison(model.id,o.i));
-   marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openHistoricalComparison(model.id,o.i)}});
-   group.appendChild(marker);
-  });
-  future.forEach(({x,y,step,index})=>{
-   const marker=document.createElementNS(ns,'g');marker.setAttribute('tabindex','0');marker.setAttribute('role','button');
-   marker.setAttribute('aria-label',model.name+' future test '+step.title);marker.style.cursor='pointer';
-   const hit=document.createElementNS(ns,'circle');hit.setAttribute('cx',x);hit.setAttribute('cy',y);
-   hit.setAttribute('r','11');hit.setAttribute('fill','transparent');hit.style.pointerEvents='all';
-   const dot=document.createElementNS(ns,'circle');dot.setAttribute('cx',x);dot.setAttribute('cy',y);
-   dot.setAttribute('r','7');dot.setAttribute('fill',model.color);dot.setAttribute('stroke','#16382c');dot.setAttribute('stroke-width','2');
-   const tt=document.createElementNS(ns,'title');tt.textContent=step.title+' | '+step.detail+' | Required evidence: '+step.evidence+' | Potential value '+step.value+'/5 · Difficulty '+step.difficulty+'/5 (not verified)';
-   marker.append(hit,dot,tt);
-   marker.addEventListener('click',()=>openRouteGuidance(model.id,index));
-   marker.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openRouteGuidance(model.id,index)}});
-   group.appendChild(marker);
-  });
+ models.forEach(model=>{
+  const generated=tailoredRoute(model.id);
+  plotSharedSignalRoute(group,model,routeComparisonSteps(model.id,snap),nodes,ns,generated);
  });
  // Draw route checkpoints above the real milestone circles; their x-offset keeps both targets available.
  svg.appendChild(group);
@@ -1500,7 +1485,8 @@ function drawReferenceCurves(){
   const tip=document.createElement('div');tip.className='route-guidance';
   const intelligent=tailoredRoute(selectedRoute);
   const fit=effectiveRouteFit(selectedRoute,intelligent);
-  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(fit.suitability==='low'?'<b style="color:#ffc4a0">NOT SUITABLE CURRENTLY</b> · '+esc(shortRouteText(fit.reason,105)):(intelligent?esc(fit.label+' · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence')))+' <button type="button" data-open-route>View route milestones ↗</button>';
+  const shape=routeShapeCheck(selectedRoute,selectRouteMilestones(selectedRoute,snap));
+  tip.innerHTML='<strong>'+esc(model.name)+'</strong> · '+(shape.status==='mismatch'?'<b style="color:#ffc4a0">SHAPE NOT SUPPORTED</b> · ':shape.status==='unknown'?'Shape unverified · ':'')++(fit.suitability==='low'?'<b style="color:#ffc4a0">NOT SUITABLE CURRENTLY</b> · '+esc(shortRouteText(fit.reason,105)):(intelligent?esc(fit.label+' · '+intelligent.metric+' ('+intelligent.metric_unit+')'):esc(steps.length?steps[0].title:'Review your evidence')))+' <button type="button" data-open-route>View route milestones ↗</button>';
   chart.appendChild(tip);
   tip.querySelector('[data-open-route]').onclick=()=>openRouteGuidance(selectedRoute,0);
  }
