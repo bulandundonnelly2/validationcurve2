@@ -266,3 +266,18 @@ test('PowerPoint remains an accepted document and uses the same analysis endpoin
  assert.match(submit,/mode:'plan'/);
  assert.match(submit,/file:base64/);
 });
+
+test('New document upload hides editor before rendering and refits after layout',()=>{
+ const submit=sourceBetween("$('#planForm').onsubmit=async", 'const ambitionProfiles=');
+ const completion=submit.slice(submit.indexOf("chartZoom=1;"));
+ assert.ok(completion.indexOf("$('#planForm').hidden=true")<completion.indexOf('renderPlan()'));
+ assert.match(completion,/renderPlan\(\);\$\('#planForm'\)\.reset\(\);scheduleChartFit\(\)/);
+});
+test('Graph initially fits after layout and observes container resize',()=>{
+ assert.match(html,/function scheduleChartFit\(\)/);
+ assert.match(html,/requestAnimationFrame\(\(\)=>requestAnimationFrame\(/);
+ assert.match(html,/new ResizeObserver\(\(\)=>scheduleChartFit\(\)\)/);
+ assert.match(html,/!chart\.dataset\.fitObserverReady/);
+ assert.match(html,/if\(chart\.clientWidth<=0\|\|chart\.clientHeight<=0\)return/);
+ assert.match(html,/curve-layout-dispose/);
+});
