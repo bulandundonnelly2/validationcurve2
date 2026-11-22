@@ -483,7 +483,7 @@ function validationCompare(){
  const p=state.plan||{},baseline=p.validationBaseline||{date:'Unavailable',rows:[]};
  let actual=0,expected=0;
  const rows=baseline.rows.map(original=>{
-  expected+=Math.max(0,original.value)/10;
+  expected+=Math.max(0,original.value)/5;
   const m=(p.milestones||[]).find(x=>x._validationId===original.id);
   if(!m)return {original,status:'Removed',delta:null};
   const linked=milestoneLinkedEvidence(m),q=milestoneEvidenceQuality(m,linked);
@@ -590,13 +590,13 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
  // Plot an explicit evidence-weighted validation signal, never an undefined
  // HIGH/MEDIUM/LOW scale. The units are relative and are not money or success odds.
  // Recorded outcomes contribute +/- (potential value / 5) * evidence confidence.
- // Proposed steps use an explicitly illustrative, unverified half-weight scenario.
+ // Unobserved steps show their full conditional potential (value/5); no actual validation credit is awarded.
  const plotValues=[];
  let scenario=0;
  for(let i=0;i<n;i++){
   const m=plan.milestones[i],observed=cumulativeLevels[i];
   if(observed.known){scenario=observed.value;}
-  else if(milestoneRelevance(m).score>0){scenario+=estimateMilestone(m).value/10;}
+  else if(milestoneRelevance(m).score>0){scenario+=estimateMilestone(m).value/5;}
   plotValues.push(scenario);
  }
  const lowest=Math.min(0,...plotValues),highest=Math.max(0,...plotValues);
@@ -626,7 +626,8 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
  const evidenceDescription=i=>{
   const m=plan.milestones[i],observed=cumulativeLevels[i],rating=estimateMilestone(m);
   const impact=observed.delta.toFixed(2);
-  return 'Potential value '+rating.value+'/5 ('+rating.contextType+'). '+rating.why+' Evidence quality '+observed.quality.score+'/100 ('+observed.quality.band+'). '+observed.quality.notes.join(' ')+' '+(observed.known
+  const projectedGain=(rating.value/5).toFixed(2);
+  return 'Potential value '+rating.value+'/5 ('+rating.contextType+'). Conditional uplift +'+projectedGain+' relative units if the milestone succeeds; this is not validated progress. '+rating.why+' Evidence quality '+observed.quality.score+'/100 ('+observed.quality.band+'). '+observed.quality.notes.join(' ')+' '+(observed.known
     ?'Recorded evidence contribution '+(observed.delta>0?'+':'')+impact+' relative units (confidence '+Math.round(observed.confidence*100)+'%).'
     :'No scored outcome recorded. Position is an illustrative scenario, not achieved validation.');
  };
@@ -1488,7 +1489,7 @@ function routePotentialValue(step){
   evidence:String(step.evidence||''),why:String(step.rationale||'')};
  return milestoneRelevance(proxy).score>0?estimateMilestone(proxy).value:0;
 }
-function routeSignalGain(step){return routePotentialValue(step)/10}
+function routeSignalGain(step){return routePotentialValue(step)/5}
 function sharedSignalY(value,svg){
  const min=Number(svg.dataset.signalMin),max=Number(svg.dataset.signalMax);
  return 485-(value-min)/Math.max(1,max-min)*385;
@@ -1601,7 +1602,7 @@ function plotSharedSignalRoute(group,model,steps,nodes,ns,route){
  path.setAttribute('d',joinedRoutePath(pts,model.id));
  const title=document.createElementNS(ns,'title');
  title.textContent=model.name+' · CONDITIONAL comparison on the same relative validation-signal units as the actual curve. '+
-  'Each proposed milestone contributes only half its estimated potential value (value/10). '+
+  'Each proposed milestone contributes its full potential value (value/5), conditionally and without observed validation credit. '+
   shape.reason+' '+(fit.suitability==='low'?'Not suitable currently: '+fit.reason+'. ':'')+
   'None of these future gains are observed evidence.';
  path.appendChild(title);group.appendChild(path);
