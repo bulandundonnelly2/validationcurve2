@@ -116,7 +116,9 @@ test('Graph uses outcome colours, node magnitude and stage-specific connector st
  assert.match(html,/Math\.max\(9,Math\.min\(23,9\+value\*1\.8\)\)/);
  assert.match(html,/impact\.transformative\?'<circle/);
  assert.match(html,/p\.status==='In progress'\?'2 7':'6 9'/);
- assert.match(html,/actualPaths\+pendingPaths\+futurePaths\+pointMarkup/);
+ assert.match(html,/actualPaths\+pendingPaths\+futurePaths/);
+ assert.match(html,/id="actualValidationLedger"/);
+ assert.match(html,/id="scenarioValidationLines"/);
 });
 test('Five route families remain available without changing achieved scores',()=>{
  for(const id of ["'steady'","'hockey'","'s'","'steps'","'long'"]){
@@ -424,12 +426,34 @@ test('Actual ledger stops at last evidenced scoring event, not the future milest
  assert.match(src,/points\.slice\(0,lastScoredIndex\+1\)/);
  assert.doesNotMatch(src,/points\.map\(\(p,i\)=>/);
 });
-test('Actual ledger avoids double-rendering an identical achieved segment',()=>{
+test('Evidence-only ledger is isolated from the combined curve',()=>{
  const src=sourceBetween('let actualPrev=[78,scoreY(0)]','const actualPaths=actualSegments.map');
- assert.match(src,/const sameAsJourney=Math\.abs\(startActual-startDisplayed\)/);
- assert.match(src,/Math\.abs\(plotValues\[i\]-projectedValues\[i\]\)/);
- assert.match(src,/sameAsJourney\?'':/);
+ assert.match(src,/points\.slice\(0,lastScoredIndex\+1\)/);
+ assert.match(src,/const path='<path d="'\+segment\(actualPrev,end\)/);
  assert.match(src,/actualPrev=end/);
+ assert.doesNotMatch(src,/sameAsJourney/);
+ const journey=sourceBetween('function applyJourneyMode(){','/* Milestone assessment uses');
+ assert.match(journey,/ledger\.style\.display=evidenceOnly\?'':'none'/);
+ assert.match(journey,/scenarios\.style\.display=evidenceOnly\?'none':''/);
+});
+test('Negative observed milestone joins its previous visible forecast in red',()=>{
+ const src=sourceBetween('const actualSegments=[]','const pointMarkup=points.map');
+ assert.match(src,/if\(impact\.hasScoredOutcome\)\{/);
+ assert.match(src,/actualSegments\.push\(\{d:path,color:impact\.actualBand\.color\}\)/);
+ assert.match(src,/const path=segment\(previous,end\)/);
+ assert.match(src,/previous=end/);
+ const before=score.projectedMilestonePositions([
+  {value:0,achieved:false,hasScoredOutcome:false,projected:.25},
+  {value:0,achieved:false,hasScoredOutcome:false,projected:.34},
+  {value:-.90,achieved:true,hasScoredOutcome:true,projected:0}
+ ]);
+ assert.equal(Number(before[2].toFixed(2)),-.31);
+ const actual=score.cumulativeMilestonePositions([
+  {value:0,achieved:false},
+  {value:0,achieved:false},
+  {value:-.90,achieved:true}
+ ]);
+ assert.equal(actual[2],-.90);
 });
 test('Display still uses achieved solid connectors and independent forecast values',()=>{
  const graph=sourceBetween('const actualSegments=[]','const pointMarkup=points.map');
