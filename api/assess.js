@@ -50,6 +50,21 @@ function assessRouteSpecificity(route,context,milestones){
   return {ok:false,reason:'Milestones lack references to the venture and its specific workflow: '+weak.slice(0,3).join('; ')};
  return {ok:true,reason:''};
 }
+
+// A generated route must also pass a venture-to-strategy compatibility check.
+// This is NOT a sector ban: research-heavy SaaS can pursue Long R&D when its
+// core product genuinely depends on original technical work.
+function researchRouteCompatibility(context, milestones){
+ const name=String(context?.ventureType||'').toLowerCase();
+ const body=[context?.description,context?.planSummary,...milestones.map(m=>m.title+' '+m.outcome+' '+m.evidence)].filter(Boolean).join(' ').toLowerCase();
+ const saas=/saas|software|subscription software|software platform|digital platform/.test(name);
+ const sectorResearch=/deep tech|research|biotech|medtech|pharma|semiconductor|drug discovery|medical device/.test(name);
+ const substantiveResearch=/\b(proprietary (?:ai |machine learning |ml )?model|train(?:ing)? (?:a |our |new |novel )?(?:machine learning|ai|foundation|predictive) model|develop(?:ing)? (?:a |our )?(?:novel|original) algorithm|new scientific method|clinical trial|regulatory approval for (?:medical|clinical)|drug discovery|laboratory validation|scientific discovery|scientific breakthrough|original research|r&d-intensive|fundamental research|model accuracy (?:research|experiment)|novel machine learning research|novel ai research)\b/.test(body);
+ if(saas&&!sectorResearch&&!substantiveResearch){
+  return {restricted:true,reason:'Not suitable for the documented SaaS model: the plan does not establish original scientific, model-training or regulatory R&D as a prerequisite to serving customers. Standard SaaS product development is not Long R&D.',changes:'Explore only if the core product requires documented novel research, model development, scientific feasibility work or regulatory trials. Otherwise prioritise customer discovery, paid pilots and retention.'};
+ }
+ return {restricted:false};
+}
 async function generateGrowthRoutes(req,res){
  const c=readContext(req.body?.context),input=req.body||{},count=Number(input.count);
  const ids=['steady','hockey','s','steps','long'];
@@ -68,6 +83,7 @@ async function generateGrowthRoutes(req,res){
   'Baseline must be cited as reported only if explicitly present, else write Assumption — unverified. Never upgrade reported founder claims to independently verified. Every future target is illustrative, not achieved. Ambitious targets should be aspirational and explained as difficult; do not give unsupported probability percentages. Numeric targets should be realistic relative to resources and stage; state assumptions. Assess all five routes independently high/moderate/low, and recommend exactly one that best fits the entrepreneur objectives and business evidence. Never block a low-suitability route. Keep recommended route separate from what the user selected.',
   'Steady route: manageable repeat customers/revenue and reliable incremental expansion. Hockey: paid conversion, retention, acquisition economics and compounding growth only after scalable channels work; acceleration must follow larger justified target increases, and low-suitability businesses need a clear explanation of missing capital, market size or capacity. Critically explain late-stage acquisition rates, unit economics, dependencies, financing and why steep growth is exceptionally difficult, not inevitable. If the milestones cannot justify acceleration, produce a modest trajectory rather than manufacturing a hockey stick.',
   'S-curve: early experiments, adoption acceleration, then maturity/limited incremental growth; explain why saturation is not business failure and consider a second innovation cycle. Step changes: distinct breakthroughs such as contracts, permits, facilities or acquisitions with substantially different measured impact and plateaus, including concentration risk. Long R&D: feasibility, repeatability, field and regulatory readiness, later commercial deployment; choose a technical readiness metric if revenue is premature; technical breakthrough is not proof of customers. Assess suitability and distinct routes relative to entrepreneur objectives.',
+  'CRITICAL SUITABILITY GATE: Software / SaaS is NOT automatically Deep tech / Research. Mark Long R&D LOW suitability unless the source explicitly documents core novel research, proprietary model training, scientific feasibility work or regulatory trials necessary for the product. A SaaS business merely using AI or having a software prototype does not qualify. Never create an AI Model Precision Score metric for conventional SaaS without evidence that proprietary predictive model performance is a central business deliverable. If a route is low suitability, preserve it for exploration but state NOT SUITABLE CURRENTLY, explain why, and list concrete prerequisites to make it plausible. Keep the recommendation from choosing an incompatible route.',
   'Do not generate generic, duplicated milestones or identical growth profiles. Targets must make the strategic differences visible, but never invent achieved evidence or claim verified forecasting. Return JSON only.',
   'CRITICAL: Ground each milestone in the SPECIFIC product/service, buyer, workflow, revenue model and present bottleneck stated in this exact business input. Do not output placeholders such as acquire users, gain traction, create partnerships, improve product, scale operations, validate demand without naming precisely WHO, WHAT, HOW MANY and HOW measured. Never introduce a sector, customer, product, education use case, partnership or business model not supported by the venture. Name the physical or digital workflow in the objective, actual customer segment in success criteria, and realistic evidence source in required_evidence.',
   'A milestone must solve a business-specific uncertainty or unlock a dependency for the NEXT milestone. If the business has reported a negative result, address its cause before recommending scaling. Avoid repeating research or prototypes that the input reports as completed. Distinguish reported outcomes from projections, and do not convert proposed results into achievements. Tie targets and their rationales to the provided baseline, market and operational constraints. For a reusable-container network like the illustrative café venture, important gates may involve observed repeat return behaviour, cost-per-wash, participating paying café contracts and repeat service fees—not general SaaS user counts; apply the analogous domain-specific reasoning to ANY business.',
@@ -142,8 +158,22 @@ async function generateGrowthRoutes(req,res){
    return res.status(502).json({error:'AI route generation failed: '+message+'. Retry or reduce the number of milestones.'});
   }
   const generatedRoutes=generated.map(x=>x.value);
-  const ranked=[...generatedRoutes].sort((a,b)=>
-   Number(b.recommendation_priority||0)-Number(a.recommendation_priority||0));
+  const researchFit=researchRouteCompatibility(c,milestones);
+  if(researchFit.restricted){
+   const long=generatedRoutes.find(r=>r.id==='long');
+   if(long){
+    long.suitability='low';
+    long.recommendation_priority=0;
+    long.suitability_reason=researchFit.reason;
+    long.objectives_fit=researchFit.reason;
+    long.changes_needed=researchFit.changes;
+    long.caveat=[researchFit.reason,String(long.caveat||'')].join(' ').slice(0,350);
+   }
+  }
+  const ranked=[...generatedRoutes].sort((a,b)=>{
+   const score=r=>Number(r.recommendation_priority||0)+(r.suitability==='high'?2:r.suitability==='moderate'?1:-10);
+   return score(b)-score(a);
+  });
   const parsed={
    routes:generatedRoutes,
    recommended_route:ranked[0].id,
