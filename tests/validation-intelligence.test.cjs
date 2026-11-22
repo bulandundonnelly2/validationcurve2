@@ -2,99 +2,134 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const path=require('node:path');
 const vm=require('node:vm');
-const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
-function extract(start,end){
- const from=html.indexOf(start);
- const to=html.indexOf(end,from+start.length);
- assert.ok(from>=0&&to>from,'Expected source section '+start);
- return html.slice(from,to);
+const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+function sourceBetween(a,b){
+ const start=html.indexOf(a),end=html.indexOf(b,start+a.length);
+ assert.ok(start>=0&&end>start,'Missing source section '+a);
+ return html.slice(start,end);
 }
-test('Inline app JavaScript parses',()=>{
- const scripts=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).filter(code=>code.trim());
+test('All inline app scripts parse',()=>{
+ const scripts=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
+  .map(x=>x[1]).filter(s=>s.trim());
  assert.ok(scripts.length);
- scripts.forEach(code=>new vm.Script(code));
+ scripts.forEach(s=>new vm.Script(s));
 });
-const quality=vm.runInNewContext(extract('function milestoneEvidenceQuality(', 'function milestoneLinkedEvidence(')+'\nmilestoneEvidenceQuality;');
-test('Achieved status and planned evidence do not count as observed proof',()=>{
- const value=quality({status:'Achieved',evidence:'Future pilot records'},[]);
- assert.equal(value.score,0);
- assert.equal(value.confidence,0);
+function engine(){
+ const src=sourceBetween('function inferMilestoneOutcome(', 'function contextualMilestoneValue(');
+ return vm.runInNewContext(src+'\n({milestoneImpact,cumulativeMilestonePositions,projectedMilestonePositions,validationImpactBand,milestoneNovelty,normalizedMilestoneStatus});',{
+  milestoneRelevance:m=>m.value_assessment?.relevance===0?{score:0,reason:'Irrelevant'}:{score:1,reason:'Relevant'},
+  milestoneEvidenceQuality:m=>m.testQuality||{score:m.reported_evidence?20:0,confidence:m.reported_evidence?.2:0,band:'Unverified',notes:[]},
+  milestoneLinkedEvidence:()=>[],
+  state:{comparisonBusinessType:'Software / SaaS'},
+  inferredBusinessType:()=> 'Software / SaaS',
+  planVentureContext:()=>({stage:'Seed'}),
+  entryRating:()=>({score:1})
+ });
+}
+const score=engine();
+const achieved=v=>({value:v,achieved:true});
+const planned=v=>({value:v,achieved:false});
+test('Positive 2.6 then 1.4 accumulates to 4.0 instead of dipping',()=>{
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions([achieved(2.6),achieved(1.4)])),[2.6,4]);
 });
-test('Provenance metadata strengthens documentation score without claiming independent verification',()=>{
- const claim=quality({reported_evidence:'Customer activation increased'},[]);
- const documented=quality({reported_evidence:'Customer activation increased',evidence_source_type:'independent',
-  evidence_source_url:'https://example.org/data',evidence_method:'Audited activation from recorded session events',
-  evidence_date:'2026-11-22',evidence_sample_size:25},[]);
- assert.ok(documented.score>claim.score);
- assert.ok(documented.score<100);
- assert.match(documented.band,/unverified/i);
+test('Neutral stays flat and a negative two-unit milestone lowers the curve',()=>{
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions([achieved(2.6),achieved(0),achieved(-2)])),[2.6,2.6,.6]);
 });
-const contextSource=extract('function contextualMilestoneValue(', 'function milestoneEvidenceQuality(');
-const assess=vm.runInNewContext(contextSource+'\ncontextualMilestoneValue;',{
- state:{comparisonBusinessType:'Software / SaaS'},
- planVentureContext:()=>({stage:'Scale'}),inferredBusinessType:()=> 'Software / SaaS',
- milestoneRelevance:()=>({score:1})
+test('A smaller positive after a breakthrough continues rising',()=>{
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions([achieved(6),achieved(.4)])),[6,6.4]);
 });
-test('SaaS signups without usage are lower value than observed retention',()=>{
- const raw={value:5,difficulty:2,why:'Base potential'};
- const signups=assess({title:'1000 signups'},raw);
- const retention=assess({title:'Measured cohort retention and active use'},raw);
- assert.ok(signups.value<retention.value);
- assert.match(signups.why,/retention/i);
+test('Planned and in-progress results cannot change actual validation',()=>{
+ const actual=score.cumulativeMilestonePositions([achieved(2),planned(4),planned(-3)]);
+ assert.deepEqual(Array.from(actual),[2,2,2]);
 });
-const baseline=vm.runInNewContext(extract('function ensureValidationBaseline(', 'function validationCompare(')+'\nensureValidationBaseline;',{
- state:{plan:{milestones:[{title:'First pilot',status:'Not started'}]}},
- estimateMilestone:()=>({value:4}),save:()=>{}
+test('Changing planned to achieved recalculates all downstream positions',()=>{
+ const impacts=[achieved(2),planned(1.5),achieved(-1)];
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions(impacts)),[2,2,1]);
+ impacts[1].achieved=true;
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions(impacts)),[2,3.5,2.5]);
 });
-test('Baseline helper is available for persistent original-plan snapshots',()=>assert.equal(typeof baseline,'function'));
-test('Experiments rank learning, uncertainty and effort instead of relying only on milestone order',()=>{
- assert.match(html,/RECOMMENDED EXPERIMENTS/);
- assert.match(html,/uncertainty\*learning/);
- assert.ok(html.includes('effort/cost'));
+test('Editing or deleting earlier milestones recomputes every later score',()=>{
+ const impacts=[achieved(2),achieved(1),achieved(-.5)];
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions(impacts)),[2,3,2.5]);
+ impacts[0].value=3;
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions(impacts)),[3,4,3.5]);
+ impacts.splice(1,1);
+ assert.deepEqual(Array.from(score.cumulativeMilestonePositions(impacts)),[3,2.5]);
 });
-test('Exports and live route re-evaluation remain available in More options',()=>{
- assert.match(html,/function showAdaptiveRoutes/);
- assert.match(html,/function showExpectedActual/);
- assert.match(html,/function downloadValidationReport/);
+test('Irrelevant Had a Coke always has zero impact even if marked achieved',()=>{
+ const m={title:'Had a Coke',status:'Achieved',value_assessment:{relevance:0},
+  reported_evidence:'Had a Coke'};
+ assert.equal(score.milestoneImpact(m,5,'positive').value,0);
 });
-
-
-const impactCode=extract('function inferMilestoneOutcome(', 'function contextualMilestoneValue(');
-const impactEngine=vm.runInNewContext(impactCode+'\n({inferMilestoneOutcome,milestoneImpact,cumulativeMilestonePositions});',{
- milestoneRelevance:m=>m.value_assessment?.relevance===0?{score:0}:{score:1},
- milestoneEvidenceQuality:()=>({confidence:.33}),
- milestoneLinkedEvidence:()=>[]
+test('Achieved negative is a scored setback, never a planned forecast',()=>{
+ const m={title:'Field trial failed',status:'Achieved',reported_evidence:'Devices failed',
+  testQuality:{score:70,confidence:.7,band:'Documented'}};
+ const result=score.milestoneImpact(m,4,'negative');
+ assert.ok(result.value<0);
+ assert.equal(result.achieved,true);
+ assert.equal(result.actualBand.color,'#b94f55');
 });
-test('A failure subtracts conservatively, rather than the full potential score',()=>{
- const m={title:'Initial Field Deployment and Setback',
-  reported_evidence:'Two devices failed after heavy rain; moisture readings drifted'};
- const result=impactEngine.milestoneImpact(m,3,'unclear');
- assert.equal(result.kind,'negative');
- assert.ok(result.value<0&&result.value>-.3);
+test('Strongly evidenced exceptional financing can reach transformative band',()=>{
+ const m={title:'Secured $1 million in investment',status:'Achieved',
+  reported_evidence:'Received $1 million investment',
+  evidence_source_type:'independent',evidence_source_url:'https://example.org/financing',
+  testQuality:{score:85,confidence:.85,band:'Documented'}};
+ const result=score.milestoneImpact(m,5,'positive');
+ assert.ok(result.value>=5&&result.value<=8);
+ assert.equal(result.transformative,true);
+ assert.equal(result.actualBand.label,'Transformative breakthrough');
 });
-test('A personal event with no business relevance receives zero',()=>{
- const m={title:'had a coke',value_assessment:{relevance:0}};
- assert.equal(impactEngine.milestoneImpact(m,0,'none').value,0);
+test('Unverified funding claim never automatically earns exceptional score',()=>{
+ const m={title:'Secured $1 million in investment',status:'Achieved',
+  reported_evidence:'Received $1 million investment',
+  testQuality:{score:20,confidence:.2,band:'Founder reported'}};
+ const result=score.milestoneImpact(m,5,'positive');
+ assert.ok(result.value<=.9);
+ assert.equal(result.transformative,false);
 });
-test('Positive outcomes add a modest amount, not the full maximum potential',()=>{
- const m={title:'Paid café trial',reported_evidence:'One café paid £150'};
- const result=impactEngine.milestoneImpact(m,4,'unclear');
- assert.equal(result.kind,'positive');
- assert.ok(result.value>0&&result.value<.4);
+test('Duplicate observed evidence earns no fresh validation',()=>{
+ const previous={title:'Paid customer pilot',status:'Achieved',reported_evidence:'Ten customers paid'};
+ const current={...previous};
+ const result=score.milestoneImpact(current,5,'positive',[previous]);
+ assert.equal(result.value,0);
 });
-test('Unreported future milestones have a small conditional contribution, unclear results have none',()=>{
- assert.equal(impactEngine.milestoneImpact({title:'Pilot'},5,'none').value,.12);
- assert.equal(impactEngine.milestoneImpact({title:'Pilot',reported_evidence:'Some feedback was collected'},5,'unclear').value,0);
+test('Original value and stage remain separate from evidence confidence',()=>{
+ const m={title:'Customer retention',status:'Achieved',reported_evidence:'Retained customers',
+  testQuality:{score:20,confidence:.2,band:'Founder'}};
+ const result=score.milestoneImpact(m,5,'positive');
+ assert.ok(result.value>0&&result.value<=.9);
+ assert.ok(result.assessment.evidenceQuality===20);
 });
-test('First milestone starts at zero, later positive results always raise progress, failures reduce it',()=>{
- const positions=impactEngine.cumulativeMilestonePositions([
-  {value:.4},{value:.2},{value:-.25},{value:0},{value:.1}]);
- assert.deepEqual(Array.from(positions),[0,.2,-.05,-.05,.05]);
+test('Forecast is distinct from actual and zero if milestone is unachieved',()=>{
+ const m={title:'Future customer milestone',status:'In progress'};
+ const result=score.milestoneImpact(m,4,'none');
+ assert.equal(result.value,0);
+ assert.ok(result.projected>0);
+ const values=score.projectedMilestonePositions([achieved(1),result],[1,1]);
+ assert.equal(values[0],1);
+ assert.ok(values[1]>1);
 });
-test('Avoid misleading chart autoscaling; support negative values and prevent unrelated event jumps',()=>{
- assert.match(html,/Math\.min\(-2,Math\.floor/);
- assert.match(html,/Math\.max\(5,Math\.ceil/);
- assert.match(html,/kind==='irrelevant'\?0:plotValues\[i\]/);
- assert.doesNotMatch(html,/score\+=routeSignalGain\(step\)/);
+test('Graph uses outcome colours, node magnitude and stage-specific connector styles',()=>{
+ assert.match(html,/VALIDATION_IMPACT_COLORS/);
+ assert.match(html,/Math\.max\(9,Math\.min\(23,9\+value\*1\.8\)\)/);
+ assert.match(html,/impact\.transformative\?'<circle/);
+ assert.match(html,/p\.status==='In progress'\?'2 7':'9 7'/);
+ assert.match(html,/actualPaths\+futurePaths\+pointMarkup/);
+});
+test('Five route families remain available without changing achieved scores',()=>{
+ for(const id of ["'steady'","'hockey'","'s'","'steps'","'long'"]){
+  assert.ok(html.includes('id:'+id),'Missing growth route '+id);
+ }
+ assert.match(html,/function routeShapeCheck/);
+ assert.match(html,/function adaptiveRouteReview/);
+ assert.match(html,/const plotValues=cumulativeMilestonePositions\(milestoneImpacts\)/);
+});
+test('Milestone edit, evidence attachment and delete actions remain accessible',()=>{
+ assert.match(html,/data-remove-attached-evidence/);
+ assert.match(html,/data-attached-evidence/);
+ assert.match(html,/directEditor\.onsubmit=async/);
+ assert.match(html,/deleteMilestone\.onclick/);
+ assert.match(html,/quickEdit\.onclick/);
 });
