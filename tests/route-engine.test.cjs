@@ -104,3 +104,41 @@ test('Route name alone does not validate implausible shape',()=>{
   assert.equal(engine.diagnoseRoute({...same,id}).matches,false,id+' must reject flat linear trajectory');
  }
 });
+
+test('Measured route deltas follow cumulative target changes, including genuine plateaus',()=>{
+ const r=createRoute('SaaS startup','steps');
+ const delta=engine.routeValidationDeltas(r);
+ assert.equal(delta.length,r.steps.length);
+ assert.equal(delta[0],0);
+ assert.equal(delta[2],0);
+ assert.ok(delta[3]>delta[1],'Largest target breakthrough drives largest visual increase');
+ assert.ok(delta.every(v=>Number.isFinite(v)&&v>=0));
+});
+test('Minor positive milestone still increases route trajectory after a major breakthrough',()=>{
+ const r=createRoute('SaaS startup','steps');
+ const delta=engine.routeValidationDeltas(r);
+ assert.ok(delta[4]>0);
+ assert.ok(delta[4]<delta[3]);
+ const cumulative=delta.reduce((scores,value)=>{scores.push(Number(((scores.at(-1)||0)+value).toFixed(6)));return scores},[]);
+ assert.ok(cumulative[4]>cumulative[3]);
+});
+test('Changing measured targets changes route validation deltas, not simply labels',()=>{
+ const r=createRoute('SaaS startup','steady');
+ const original=engine.routeValidationDeltas(r);
+ const revised=structuredClone(r);
+ revised.steps[3].target_value+=2;
+ revised.steps[4].target_value+=2;
+ assert.notDeepEqual(engine.routeValidationDeltas(revised),original);
+});
+test('All five route scenarios derive their shapes from measured milestone targets',()=>{
+ const curves=engine.ROUTES.map(id=>engine.routeValidationDeltas(createRoute('SaaS startup',id)));
+ assert.equal(new Set(curves.map(x=>x.map(y=>y.toFixed(3)).join(','))).size,5);
+});
+test('Invalid and flat routes do not invent progress',()=>{
+ const invalid=createRoute('SaaS startup','steady');
+ invalid.steps[1].target_value=-1;
+ assert.deepEqual(engine.routeValidationDeltas(invalid),[]);
+ const flat=createRoute('SaaS startup','steady');
+ flat.steps.forEach(step=>step.target_value=0);
+ assert.deepEqual(engine.routeValidationDeltas(flat),[0,0,0,0,0]);
+});
