@@ -58,3 +58,33 @@ test('Exports and live route re-evaluation remain available in More options',()=
  assert.match(html,/function showExpectedActual/);
  assert.match(html,/function downloadValidationReport/);
 });
+
+
+const impactCode=extract('function inferMilestoneOutcome(', 'function contextualMilestoneValue(');
+const impactEngine=vm.runInNewContext(impactCode+'\n({inferMilestoneOutcome,milestoneImpact});',{
+ milestoneRelevance:m=>m.value_assessment?.relevance===0?{score:0}:{score:1}
+});
+test('A failed field deployment falls below zero even when reported direction is unspecified',()=>{
+ const milestone={title:'Initial Field Deployment and Setback',
+  reported_evidence:'Two devices failed after heavy rain; moisture readings drifted'};
+ assert.equal(impactEngine.milestoneImpact(milestone,3,'unclear').value,-0.6);
+});
+test('A personal event with no business relevance is plotted at zero, not inherited from earlier progress',()=>{
+ const milestone={title:'had a coke',value_assessment:{relevance:0}};
+ assert.equal(impactEngine.milestoneImpact(milestone,0,'none').value,0);
+});
+test('A paid business trial can have a positive impact without claiming independently verified evidence',()=>{
+ const milestone={title:'Paid café trial',reported_evidence:'One café paid £150'};
+ const result=impactEngine.milestoneImpact(milestone,4,'unclear');
+ assert.equal(result.value,0.8);
+ assert.equal(result.kind,'positive');
+});
+test('Planned relevant milestones remain conditional, unclear outcomes are neutral',()=>{
+ assert.equal(impactEngine.milestoneImpact({title:'Pilot'},5,'none').kind,'projected');
+ assert.equal(impactEngine.milestoneImpact({title:'Pilot',reported_evidence:'Some feedback was collected'},5,'unclear').value,0);
+});
+test('The signed-impact chart has a zero baseline and routes do not accumulate off-axis',()=>{
+ assert.match(html,/const axisMin=-1,axisMax=1/);
+ assert.match(html,/const plotValues=milestoneImpacts\.map/);
+ assert.doesNotMatch(html,/score\+=routeSignalGain\(step\)/);
+});
