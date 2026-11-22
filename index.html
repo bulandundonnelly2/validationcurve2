@@ -703,7 +703,7 @@ function hockeyStickRoadmap(snapshot){
  ];
  return [...repair,...steps].map((step,i)=>({...step,routePhase:i<repair.length?'repair':i<repair.length+4?'validate':i<repair.length+7?'repeat':'accelerate'}));
 }
-// Cache only assessments for the *exact* business context and milestone set.
+// Saved route projections are snapshots. Adding/assessing a milestone updates the personal curve, not the strategy projections.
 let routeRequestInFlight=null;
 function growthRouteSignature(){
  const plan=state.plan||{};
@@ -711,8 +711,7 @@ function growthRouteSignature(){
 }
 function tailoredRoute(id){
  const cache=state.growthRouteCache;
- return cache&&cache.signature===growthRouteSignature()
-  ?cache.routes?.find(r=>r.id===id):null;
+ return cache?.routes?.find(r=>r.id===id)||null;
 }
 function updateRouteGenerationStatus(message,kind){
  const el=$('#routeGenerationStatus');
@@ -725,8 +724,11 @@ function updateRouteGenerationStatus(message,kind){
 async function generateTailoredRoutes(force=false){
  if(!state.plan?.milestones?.length)return;
  const signature=growthRouteSignature();
- if(state.growthRouteCache?.signature===signature){
-  updateRouteGenerationStatus(force?'Assessment unchanged':'Routes saved','ready');return;
+ // Ordinary edits to the user's milestone journey never trigger a new strategy.
+ // Only a deliberate reassessment can adopt changed evidence or assumptions.
+ if(state.growthRouteCache?.routes?.length===5 && (!force||state.growthRouteCache.signature===signature)){
+  updateRouteGenerationStatus(state.growthRouteCache.signature===signature?'Routes saved':'Routes saved · Reassess to include milestone changes','ready');
+  return;
  }
  if(routeRequestInFlight?.signature===signature)return;
  if(routeRequestInFlight)routeRequestInFlight.controller.abort();
@@ -879,6 +881,7 @@ function setupReferenceControls(){
  toolbar.querySelector('#referenceBusinessType').onchange=e=>{
   state.comparisonBusinessType=e.target.value;
   state.comparisonCurves=[...(businessPathDefaults[e.target.value]||['steady'])];
+  state.growthRouteCache=null; // explicitly changing venture type requests a new route plan
   save();setupReferenceControlsRefresh();
  };
  toolbar.querySelectorAll('[data-reference]').forEach(input=>{
@@ -905,7 +908,7 @@ function setupReferenceControls(){
   save();drawReferenceCurves();
  });
  syncAllToggle();
- toolbar.querySelector('#routeMilestoneCount').onchange=e=>{state.routeMilestoneCount=Number(e.target.value);save();drawReferenceCurves();generateTailoredRoutes()};
+ toolbar.querySelector('#routeMilestoneCount').onchange=e=>{state.routeMilestoneCount=Number(e.target.value);state.growthRouteCache=null;save();drawReferenceCurves();generateTailoredRoutes()};
  toolbar.querySelector('#referenceHelp').onclick=e=>{explainer.hidden=!explainer.hidden;e.target.setAttribute('aria-expanded',String(!explainer.hidden))};
  drawReferenceCurves();
  generateTailoredRoutes();
