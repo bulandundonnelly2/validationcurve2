@@ -226,3 +226,17 @@ test('Milestone removal controls appear in the selected journey and reuse existi
  assert.ok(html.includes("removalAdvice.querySelector('[data-advice-remove]').onclick=()=>deleteMilestone.click()"));
  assert.ok(html.includes("removalAdvice.querySelector('[data-advice-edit]').onclick=()=>quickEdit.click()"));
 });
+
+test('Experiment add action is presented before the long evidence criteria',()=>{
+ const start=html.indexOf('function renderValidationAdviser()');
+ const end=html.indexOf('const openAt=i=>',start);
+ const adviser=html.slice(start,end);
+ assert.ok(adviser.includes('＋ Add experiment as milestone'));
+ assert.ok(adviser.indexOf('sheet.appendChild(experimentActionRow)')<adviser.indexOf("const criteria=el('div','decision-criteria')"));
+ assert.equal((adviser.match(/const add=el\('button','decision-primary'/g)||[]).length,1);
+ assert.match(adviser,/plan\.milestones\.splice\(i\+1,0/);
+});
+test('Expanded experiment panel offers scroll room below the last item',()=>{
+ assert.match(html,/padding-bottom:clamp\(32px,8vh,100px\)/);
+ assert.match(html,/\.experiment-action-row/);
+});
