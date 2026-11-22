@@ -937,7 +937,7 @@ function projectedMilestonePositions(impacts,actual){
  return impacts.map((item,i)=>{
   // Completion without an assessable outcome is not recorded validation.
   // Keep the same conditional forecast rather than resetting the node to zero.
-  if(item.hasScoredOutcome){projection=actual[i];return projection}
+  if(item.hasScoredOutcome===true||(item.hasScoredOutcome===undefined&&item.achieved)){projection=actual[i];return projection}
   if(item.kind==='irrelevant')return projection;
   projection=Number((projection+item.projected).toFixed(6));
   return projection;
