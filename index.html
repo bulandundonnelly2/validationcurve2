@@ -575,20 +575,8 @@ function setupValidationExtras(){
 }
 function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=state.plan;const hasPlan=!!(plan&&Array.isArray(plan.milestones)&&plan.milestones.length);if(hasPlan){let titlesUpdated=false;plan.milestones.forEach(m=>{if(m.status!=='Achieved')return;const clean=String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim();if(clean&&clean!==m.title){m.title=clean;titlesUpdated=true}});if(titlesUpdated)save();}$('#openPlan').hidden=!hasPlan;$('#planForm').hidden=hasPlan;$('#cancelPlan').hidden=!hasPlan;if(!plan||!Array.isArray(plan.milestones)||!plan.milestones.length){document.body.classList.remove('curve-open');box.innerHTML='<div class="curve-placeholder" role="img" aria-label="Your proposed validation curve will appear here"><svg viewBox="0 0 800 270" preserveAspectRatio="none" aria-hidden="true"><path d="M35 45H765 M35 105H765 M35 165H765 M35 225H765" fill="none" stroke="#d7e8d4" stroke-dasharray="4 7"/><circle cx="125" cy="165" r="9" fill="#d8e9d4"/><circle cx="300" cy="165" r="9" fill="#d8e9d4"/><circle cx="475" cy="165" r="9" fill="#d8e9d4"/><circle cx="650" cy="165" r="9" fill="#d8e9d4"/></svg><div class="curve-empty-text"><b>Your curve starts here</b><span>Describe your idea or upload a document.</span></div></div><details class="manual-start"><summary>Or add a milestone yourself</summary><button class="cancel" id="startBlankPlan" type="button">＋ Add my own milestone</button></details>';$('#startBlankPlan').onclick=()=>{state.plan={summary:'A pathway you created for your own venture.',milestones:[{title:'My first milestone',timeframe:'',target:'',evidence:'',assumption:'',status:'Not started'}]};save();renderPlan()};return}document.body.classList.add('curve-open');const n=plan.milestones.length;const evidenceFor=m=>(plan.fromDocument?[]:(state.entries||[]).filter(e=>!e.demo&&e.linkedMilestone===m.title)).sort((a,b)=>String(b.date).localeCompare(String(a.date)));const latestEvidence=m=>evidenceFor(m)[0];const planHasEvidence=plan.milestones.some(m=>Boolean(m.reported_evidence)||evidenceFor(m).length>0);
  const initialVenture=!planHasEvidence;
- const statusColor=m=>m.status==='Achieved'?'#b9f18f':m.status==='In progress'?'#ff9e8b':m.status==='Revisit'?'#ffd08a':'#a4bbb0';const level=m=>{const v=Number(m.validation_level);return Number.isInteger(v)&&v>=1&&v<=5?v:null};const outcome=m=>{if(milestoneRelevance(m).score===0)return 'none';const entry=latestEvidence(m);if(entry){const v=entryRating(entry).score;return v===null?'unclear':v<0?'negative':v===0?'mixed':'positive'}return m.reported_evidence?m.evidence_direction||'unclear':'none'};// Cumulative evidence-weighted score. Reported claims are not automatically verified.
- // Fixed display scale avoids visually exaggerating small changes when new milestones are added.
- let cumulative=0;
- const cumulativeLevels=plan.milestones.map(m=>{
-  const result=outcome(m);
-  const depth=level(m);
-  const evidenceEntry=latestEvidence(m);
-  const quality=milestoneEvidenceQuality(m,evidenceFor(m));
-  const confidence=quality.confidence;
-  const value=estimateMilestone(m).value;
-  const delta=(result==='positive'?1:result==='negative'?-1:0)*value*confidence/5;
-  cumulative+=delta;
-  return {result,value:cumulative,delta,confidence,quality,known:!['none','unclear'].includes(result)};
- });
+ const statusColor=m=>m.status==='Achieved'?'#b9f18f':m.status==='In progress'?'#ff9e8b':m.status==='Revisit'?'#ffd08a':'#a4bbb0';
+ const level=m=>{const v=Number(m.validation_level);return Number.isInteger(v)&&v>=1&&v<=5?v:null};
  // Plot each milestone's own signed business impact, not a cumulative total.
  // This avoids falsely placing a zero-value event at +4 simply because previous
  // milestones had value. A setback falls below zero; an irrelevant event stays at 0.
@@ -603,7 +591,8 @@ function renderPlan(){ensureValidationBaseline();const box=$('#planView'), plan=
  // Route overlays are scenarios, not a contribution to the actual validation line.
  const lastAchievedIndex=milestoneImpacts.reduce((last,impact,i)=>impact.achieved?i:last,-1);
  const anchorScore=lastAchievedIndex>=0?plotValues[lastAchievedIndex]:0;
- const routeScores=referenceModels.map(model=>{
+ const routeIds=Array.isArray(state.comparisonCurves)?state.comparisonCurves:[];
+ const routeScores=referenceModels.filter(model=>routeIds.includes(model.id)).map(model=>{
   const steps=routeComparisonSteps(model.id,routeSnapshot());
   return anchorScore+steps.reduce((sum,step)=>sum+Math.min(1.8,routeSignalGain(step)*1.8),0);
  });
@@ -879,6 +868,9 @@ function milestoneNovelty(m,prior=[]){
  const title=normalize(m.title),result=normalize(m.reported_evidence),ref=normalize(m.evidence_source_url);
  let factor=1,reason='Provides a distinct validation checkpoint.';
  for(const earlier of prior){
+  // An unachieved plan is not previously earned validation or duplicate evidence.
+  if(normalizedMilestoneStatus(earlier)!=='Achieved'||
+     !String(earlier.reported_evidence||'').trim())continue;
   const oldTitle=normalize(earlier.title),oldResult=normalize(earlier.reported_evidence),oldRef=normalize(earlier.evidence_source_url);
   if(result&&oldResult&&result===oldResult){factor=0;reason='Exactly the same reported outcome was already credited.';break}
   if(ref&&oldRef&&ref===oldRef&&(!m.evidence_date||m.evidence_date===earlier.evidence_date)){
@@ -956,8 +948,7 @@ function milestoneImpact(m,value,result,prior=[]){
  const hasFundingProof=funding>=1e6&&normalized==='positive'&&quality.score>=65&&
   ['independent','system'].includes(m.evidence_source_type)&&Boolean(String(m.evidence_source_url||'').trim());
  const early=/pre.?seed|seed|early|concept|startup|idea|discovery/.test(stage);
- const stageKnown=Boolean(stage);
- const transformative=hasFundingProof&&(early||!stageKnown)&&potential>=4&&novelty.factor>=.75;
+ const transformative=hasFundingProof&&early&&potential>=4&&novelty.factor>=.75;
  const raw=transformative?7.3:base;
  const credibility=Math.min(1,quality.confidence/.85);
  const reliability=.22+.78*Math.pow(credibility,1.3);
