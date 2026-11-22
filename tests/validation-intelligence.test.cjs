@@ -240,3 +240,15 @@ test('Expanded experiment panel offers scroll room below the last item',()=>{
  assert.match(html,/padding-bottom:clamp\(32px,8vh,100px\)/);
  assert.match(html,/\.experiment-action-row/);
 });
+
+test('Scoring disclosure is discreet, opt-in and reflects cumulative scoring',()=>{
+ assert.match(html,/id="scoreFormulaToggle"/);
+ assert.match(html,/scoreInfo\.hidden=true/);
+ assert.match(html,/scoreToggle\.onclick=\(\)=>toggleFormula\(scoreInfo\.hidden\)/);
+ assert.match(html,/Vₙ = Vₙ₋₁ \+ ΔVₙ/);
+ assert.match(html,/0\.22 \+ 0\.78/);
+ assert.match(html,/below 40 caps impact at 0\.90/);
+ assert.match(html,/below 65 caps it at 2\.90/);
+ assert.match(html,/not a business valuation/);
+ assert.match(html,/score-formula-info'\)\?\.remove\(\)/);
+});
