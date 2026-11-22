@@ -61,30 +61,40 @@ test('Exports and live route re-evaluation remain available in More options',()=
 
 
 const impactCode=extract('function inferMilestoneOutcome(', 'function contextualMilestoneValue(');
-const impactEngine=vm.runInNewContext(impactCode+'\n({inferMilestoneOutcome,milestoneImpact});',{
- milestoneRelevance:m=>m.value_assessment?.relevance===0?{score:0}:{score:1}
+const impactEngine=vm.runInNewContext(impactCode+'\n({inferMilestoneOutcome,milestoneImpact,cumulativeMilestonePositions});',{
+ milestoneRelevance:m=>m.value_assessment?.relevance===0?{score:0}:{score:1},
+ milestoneEvidenceQuality:()=>({confidence:.33}),
+ milestoneLinkedEvidence:()=>[]
 });
-test('A failed field deployment falls below zero even when reported direction is unspecified',()=>{
- const milestone={title:'Initial Field Deployment and Setback',
+test('A failure subtracts conservatively, rather than the full potential score',()=>{
+ const m={title:'Initial Field Deployment and Setback',
   reported_evidence:'Two devices failed after heavy rain; moisture readings drifted'};
- assert.equal(impactEngine.milestoneImpact(milestone,3,'unclear').value,-0.6);
+ const result=impactEngine.milestoneImpact(m,3,'unclear');
+ assert.equal(result.kind,'negative');
+ assert.ok(result.value<0&&result.value>-.3);
 });
-test('A personal event with no business relevance is plotted at zero, not inherited from earlier progress',()=>{
- const milestone={title:'had a coke',value_assessment:{relevance:0}};
- assert.equal(impactEngine.milestoneImpact(milestone,0,'none').value,0);
+test('A personal event with no business relevance receives zero',()=>{
+ const m={title:'had a coke',value_assessment:{relevance:0}};
+ assert.equal(impactEngine.milestoneImpact(m,0,'none').value,0);
 });
-test('A paid business trial can have a positive impact without claiming independently verified evidence',()=>{
- const milestone={title:'Paid café trial',reported_evidence:'One café paid £150'};
- const result=impactEngine.milestoneImpact(milestone,4,'unclear');
- assert.equal(result.value,0.8);
+test('Positive outcomes add a modest amount, not the full maximum potential',()=>{
+ const m={title:'Paid café trial',reported_evidence:'One café paid £150'};
+ const result=impactEngine.milestoneImpact(m,4,'unclear');
  assert.equal(result.kind,'positive');
+ assert.ok(result.value>0&&result.value<.4);
 });
-test('Planned relevant milestones remain conditional, unclear outcomes are neutral',()=>{
- assert.equal(impactEngine.milestoneImpact({title:'Pilot'},5,'none').kind,'projected');
+test('Unreported future milestones have a small conditional contribution, unclear results have none',()=>{
+ assert.equal(impactEngine.milestoneImpact({title:'Pilot'},5,'none').value,.12);
  assert.equal(impactEngine.milestoneImpact({title:'Pilot',reported_evidence:'Some feedback was collected'},5,'unclear').value,0);
 });
-test('The signed-impact chart has a zero baseline and routes do not accumulate off-axis',()=>{
- assert.match(html,/const axisMin=-1,axisMax=1/);
- assert.match(html,/const plotValues=milestoneImpacts\.map/);
+test('First milestone starts at zero, later positive results always raise progress, failures reduce it',()=>{
+ const positions=impactEngine.cumulativeMilestonePositions([
+  {value:.4},{value:.2},{value:-.25},{value:0},{value:.1}]);
+ assert.deepEqual(Array.from(positions),[0,.2,-.05,-.05,.05]);
+});
+test('Avoid misleading chart autoscaling; support negative values and prevent unrelated event jumps',()=>{
+ assert.match(html,/Math\.min\(-2,Math\.floor/);
+ assert.match(html,/Math\.max\(5,Math\.ceil/);
+ assert.match(html,/kind==='irrelevant'\?0:plotValues\[i\]/);
  assert.doesNotMatch(html,/score\+=routeSignalGain\(step\)/);
 });
