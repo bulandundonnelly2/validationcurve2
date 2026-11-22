@@ -461,3 +461,19 @@ test('Display still uses achieved solid connectors and independent forecast valu
  assert.match(graph,/const path=segment\(previous,end\)/);
  assert.match(html,/const projectedValues=projectedMilestonePositions\(milestoneImpacts,plotValues\)/);
 });
+
+test('File selection directly invokes the plan submission handler and exposes retry',()=>{
+ const change=sourceBetween('// Use the existing submit handler directly for automatic document analysis.',"$('#clearDemo').onclick");
+ assert.match(change,/function submitSelectedPlanDocument\(\)/);
+ assert.match(change,/form\.onsubmit\(\{preventDefault\(\)\{\}\}\)/);
+ assert.match(change,/submitSelectedPlanDocument\(\);/);
+ assert.doesNotMatch(change,/\.requestSubmit\(\)/);
+ assert.match(change,/\$\('#retryPlanAnalysis'\)\.onclick=submitSelectedPlanDocument/);
+});
+test('Failed document processing keeps the selected PPTX and shows a visible retry action',()=>{
+ const submit=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
+ assert.match(submit,/if\(file\)\{\$\('#selectedPlanFile'\)\.textContent=file\.name\+' · Analysis failed: '/);
+ assert.match(submit,/\$\('#retryPlanAnalysis'\)\.hidden=false/);
+ assert.match(submit,/if\(button\.disabled\)return/);
+ assert.match(html,/id="retryPlanAnalysis" hidden/);
+});
