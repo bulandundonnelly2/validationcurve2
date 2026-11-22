@@ -795,42 +795,151 @@ function inferMilestoneOutcome(m){
  if(positive)return 'positive';
  return 'unclear';
 }
+// Business validation intelligence: contextual assessment inputs, deterministic final scores.
+// The value_assessment object may be AI-assisted; this scorer never trusts its score
+// as proof and applies achievement status, evidence, novelty and outcome constraints.
+const VALIDATION_IMPACT_COLORS={
+ minor:'#b9eb9b',meaningful:'#6fd292',major:'#208c61',transformative:'#067e68',
+ neutral:'#9eaea6',minorSetback:'#ee9a8d',majorSetback:'#b94f55'
+};
+function normalizedMilestoneStatus(m){
+ const status=String(m.status||'Not started').trim().toLowerCase();
+ return status==='achieved'?'Achieved':status==='in progress'?'In progress':'Planned';
+}
+function validationImpactBand(score){
+ const amount=Math.abs(Number(score)||0);
+ if(amount<.05)return {label:'Neutral',color:VALIDATION_IMPACT_COLORS.neutral,level:'neutral'};
+ if(score<0)return amount<1?{label:'Minor setback',color:VALIDATION_IMPACT_COLORS.minorSetback,level:'minorSetback'}:
+  {label:amount>=5?'Transformative setback':'Major setback',color:VALIDATION_IMPACT_COLORS.majorSetback,level:'majorSetback'};
+ if(amount<1)return {label:'Minor positive',color:VALIDATION_IMPACT_COLORS.minor,level:'minor'};
+ if(amount<3)return {label:'Meaningful positive',color:VALIDATION_IMPACT_COLORS.meaningful,level:'meaningful'};
+ if(amount<5)return {label:'Major achievement',color:VALIDATION_IMPACT_COLORS.major,level:'major'};
+ return {label:'Transformative breakthrough',color:VALIDATION_IMPACT_COLORS.transformative,level:'transformative'};
+}
+function milestoneNovelty(m,prior=[]){
+ const normalize=s=>String(s||'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim();
+ const title=normalize(m.title),result=normalize(m.reported_evidence),ref=normalize(m.evidence_source_url);
+ let factor=1,reason='Provides a distinct validation checkpoint.';
+ for(const earlier of prior){
+  const oldTitle=normalize(earlier.title),oldResult=normalize(earlier.reported_evidence),oldRef=normalize(earlier.evidence_source_url);
+  if(result&&oldResult&&result===oldResult){factor=0;reason='Exactly the same reported outcome was already credited.';break}
+  if(ref&&oldRef&&ref===oldRef&&(!m.evidence_date||m.evidence_date===earlier.evidence_date)){
+   factor=0;reason='The same dated source evidence was already used.';break
+  }
+  if(title&&title===oldTitle){
+   if(m.evidence_date&&earlier.evidence_date&&m.evidence_date!==earlier.evidence_date){
+    if(factor>.8){factor=.8;reason='Similar achievement repeated on a new date; incremental validation only.'}
+   }else if(factor>.55){factor=.55;reason='Repeated milestone type; avoid counting the same claim as a fresh breakthrough.'}
+  }
+  const ta=new Set(title.split(' ').filter(w=>w.length>3)),tb=new Set(oldTitle.split(' ').filter(w=>w.length>3));
+  const overlap=[...ta].filter(w=>tb.has(w)).length;
+  if(ta.size>2&&tb.size>2&&overlap/Math.max(ta.size,tb.size)>.78&&factor>.7){
+   factor=.7;reason='Substantially overlaps an earlier milestone; apply novelty discount.';
+  }
+ }
+ return {factor,reason};
+}
+function fundingMagnitude(m){
+ const text=[m.title,m.reported_evidence,m.target].filter(Boolean).join(' ');
+ const investment=/\b(invest(?:ment|ed|or|ors|ing)?|fund(?:ing|ed|raise|raising)?|seed round|series [a-f]|equity financing|capital raise)\b/i.test(text);
+ if(!investment)return 0;
+ const re=/(?:[$£€]\s*|USD\s*|GBP\s*|EUR\s*)(\d[\d,]*(?:\.\d+)?)\s*(billion|million|thousand|bn|mm|mn|m|k)?\b|\b(\d[\d,]*(?:\.\d+)?)\s*(billion|million|thousand|bn|mm|mn|m|k)\b/ig;
+ let maximum=0,match;
+ while((match=re.exec(text))){
+  const amount=Number((match[1]||match[3]||'').replace(/,/g,''));
+  const unit=(match[2]||match[4]||'').toLowerCase();
+  const multiplier=/^(billion|bn)$/.test(unit)?1e9:/^(million|mm|mn|m)$/.test(unit)?1e6:/^(thousand|k)$/.test(unit)?1e3:1;
+  if(Number.isFinite(amount))maximum=Math.max(maximum,amount*multiplier);
+ }
+ return maximum;
+}
+function milestoneOutcomeForScoring(m){
+ const explicit=String(m.evidence_direction||'').toLowerCase();
+ if(['positive','negative','mixed'].includes(explicit))return explicit;
+ const linked=milestoneLinkedEvidence(m).filter(e=>!e.demo).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+ if(linked.length){
+  const rating=entryRating(linked[0]).score;
+  if(rating!==null&&Number.isFinite(rating))return rating<0?'negative':rating>0?'positive':'mixed';
+ }
+ return inferMilestoneOutcome(m);
+}
 function cumulativeMilestonePositions(impacts){
- // First checkpoint is the baseline; later signed contributions compound.
- let total=0;
- return impacts.map((impact,i)=>{
-  if(i===0)return 0;
-  total=Number((total+impact.value).toFixed(6));
-  return total;
+ // An independent origin at zero precedes milestone 1. Every Achieved milestone,
+ // including the first, contributes its signed change; other statuses contribute 0.
+ let score=0;
+ return impacts.map(item=>{
+  score=Number((score+(item.achieved?item.value:0)).toFixed(6));
+  return score;
  });
 }
-function milestoneImpact(m,value,result){
+function projectedMilestonePositions(impacts,actual){
+ let projection=0;
+ return impacts.map((item,i)=>{
+  if(item.achieved){projection=actual[i];return projection}
+  if(item.kind==='irrelevant')return 0;
+  projection=Number((projection+item.projected).toFixed(6));
+  return projection;
+ });
+}
+function milestoneImpact(m,value,result,prior=[]){
+ const status=normalizedMilestoneStatus(m);
  const relevance=milestoneRelevance(m);
- if(relevance.score===0||value<=0)return {value:0,kind:'irrelevant',note:'No venture-relevant outcome; it cannot add to or subtract from the validation journey.'};
- const potential=Math.max(0,Math.min(5,Number(value)||0))/5;
- const observed=String(m.reported_evidence||'').trim();
- const q=milestoneEvidenceQuality(m,milestoneLinkedEvidence(m));
- const signal=result==='none'||result==='unclear'?inferMilestoneOutcome(m):result;
- if(signal==='mixed')return {value:0,kind:'mixed',note:'Mixed results: no net increase is assumed until the uncertainty is resolved.'};
- if(signal==='unclear')return {value:0,kind:'unclear',note:'A result was reported but its direction is unclear; no movement is awarded.'};
- if(signal==='none'){
-  // Show high-value planned work only as a minimal conditional increment.
-  // It is not an achieved or evidence-backed improvement.
-  return {value:Number((Math.min(.12,potential*.12)).toFixed(3)),kind:'projected',
-   note:'Only a small conditional projection is shown. Planned milestones do not establish actual validation.'};
- }
- // Use discounted and bounded changes. Founder-reported claims without provenance
- // move the curve modestly. Higher-quality documentation can strengthen a score,
- // but a single milestone never produces a dramatic leap.
- const quality=q.confidence;
- const multiplier=observed?Math.min(.7,.2+quality*.65):.2;
- const capped=Math.min(.45,potential*multiplier);
- const amount=Number(capped.toFixed(3));
- if(signal==='negative')return {value:-amount,kind:'negative',
-  note:'A reported setback reduces progress conservatively, proportionate to its significance and documentation.'};
- if(signal==='positive')return {value:amount,kind:'positive',
-  note:'A reported positive result adds progress conservatively; its impact is discounted when evidence is limited.'};
- return {value:0,kind:'unclear',note:'No defensible direction was established.'};
+ const quality=milestoneEvidenceQuality(m,milestoneLinkedEvidence(m));
+ const novelty=milestoneNovelty(m,prior);
+ const potential=Math.max(0,Math.min(5,Number(value)||0));
+ const type=state.comparisonBusinessType||inferredBusinessType();
+ const stage=String(planVentureContext().stage||'').toLowerCase();
+ const inferred=(!result||['none','unclear'].includes(result))?milestoneOutcomeForScoring(m):result;
+ const normalized=['positive','negative','mixed'].includes(inferred)?inferred:'unclear';
+ const hasObservation=Boolean(String(m.reported_evidence||'').trim()||milestoneLinkedEvidence(m).length);
+ const aiAssessment=m.value_assessment&&typeof m.value_assessment.explanation==='string'?m.value_assessment.explanation.trim():'';
+ const base=potential===0?0:[0,.55,1.25,2.30,3.85,4.90][Math.round(potential)]||0;
+ const funding=fundingMagnitude(m);
+ const hasFundingProof=funding>=1e6&&normalized==='positive'&&quality.score>=65&&
+  ['independent','system'].includes(m.evidence_source_type)&&Boolean(String(m.evidence_source_url||'').trim());
+ const early=/pre.?seed|seed|early|concept|startup|idea|discovery/.test(stage);
+ const stageKnown=Boolean(stage);
+ const transformative=hasFundingProof&&(early||!stageKnown)&&potential>=4&&novelty.factor>=.75;
+ const raw=transformative?7.3:base;
+ const credibility=Math.min(1,quality.confidence/.85);
+ const reliability=.22+.78*Math.pow(credibility,1.3);
+ let awarded=Math.min(8,raw*reliability*novelty.factor);
+ // A headline or unsupported claim cannot leap into major/transformative validation.
+ if(quality.score<40)awarded=Math.min(awarded,.9);
+ else if(quality.score<65)awarded=Math.min(awarded,2.9);
+ else if(!transformative)awarded=Math.min(awarded,4.9);
+ // Rounded impact has a defined neutral band. Never award an arbitrary minimum.
+ awarded=Number(awarded.toFixed(2));
+ const notes=[];
+ if(!aiAssessment)notes.push('Contextual rules were used; no stored AI assessment for this milestone.');
+ else notes.push('AI-assisted potential assessment: '+aiAssessment);
+ if(type)notes.push('Business model: '+type+'.');
+ if(stage)notes.push('Venture stage: '+stage+'.');
+ notes.push(novelty.reason);
+ if(funding>=1e6)notes.push('Major financing is a runway and backing signal, not automatic product-market fit.');
+ if(transformative)notes.push('Exceptional financing assessed against source, stage, amount and novelty; source contents are not independently checked by this app.');
+ if(quality.score<65)notes.push('Evidence metadata does not justify high-confidence or exceptional validation.');
+ if(status!=='Achieved')notes.push('Not achieved: predicted impact is shown separately; actual score change is zero.');
+ else if(!hasObservation)notes.push('Marked Achieved without an observed result: actual score change remains zero.');
+ else if(normalized==='unclear')notes.push('Observed outcome direction is unclear; actual score remains unchanged.');
+ else if(normalized==='mixed')notes.push('Mixed outcome: no positive or negative net contribution is assumed.');
+ const eligible=relevance.score>0&&potential>0;
+ const actualEligible=status==='Achieved'&&hasObservation&&['positive','negative'].includes(normalized);
+ const valueSigned=actualEligible&&eligible?(normalized==='negative'?-awarded:awarded):0;
+ // Predictions use a discounted scenario, never count toward actual validation.
+ const forecast=eligible?(normalized==='negative'?-1:1)*Number((Math.min(4.9,base)*.55*novelty.factor).toFixed(2)):0;
+ const signed=eligible?valueSigned:0;
+ const actualBand=validationImpactBand(signed);
+ const projectedBand=validationImpactBand(forecast);
+ const displayBand=actualEligible?actualBand:status==='Achieved'?validationImpactBand(0):projectedBand;
+ return {value:signed,projected:eligible?forecast:0,achieved:status==='Achieved',status,
+  kind:!eligible?'irrelevant':!hasObservation?'projected':normalized,
+  outcome:normalized,quality,novelty,significance:potential,transformative:actualEligible&&transformative&&signed>=5,
+  band:displayBand,actualBand,projectedBand,
+  note:notes.join(' '),
+  assessment:{significance:potential,businessRelevance:relevance.reason,evidenceQuality:quality.score,
+   outcome:normalized,novelty:novelty.factor,rawPotential:raw,confidenceMultiplier:reliability}
+ };
 }
 function contextualMilestoneValue(m,base){
  const c=planVentureContext(),type=state.comparisonBusinessType||inferredBusinessType();
