@@ -613,3 +613,21 @@ test('Growth-route generation retries timeout and incomplete JSON at most once',
  assert.match(request,/if\(attempt===0\)\{critique='The response did not contain route /);
  assert.match(request,/throw err/);
 });
+
+test('Optional venture context appears before auto-starting document upload',()=>{
+ const form=sourceBetween('id="planForm"','</form>');
+ const type=form.indexOf('id="planBusinessType"');
+ const stage=form.indexOf('id="planStage"');
+ const results=form.indexOf('id="planResults"');
+ const upload=form.indexOf('id="planFile"');
+ assert.ok(type>=0&&stage>type&&results>stage&&upload>results,
+  'Complete optional business context before selecting a deck, which starts analysis automatically');
+ assert.match(form,/or upload a document below/);
+ assert.match(form,/id="retryPlanAnalysis" hidden/);
+});
+test('Moving upload below context keeps its automatic analysis and retry behavior',()=>{
+ const change=sourceBetween("$('#planFile').addEventListener('change'", "$('#clearDemo').onclick");
+ assert.match(change,/submitSelectedPlanDocument\(\)/);
+ assert.match(change,/file\.size>2500000/);
+ assert.match(html,/\$\('#retryPlanAnalysis'\)\.onclick=submitSelectedPlanDocument/);
+});
