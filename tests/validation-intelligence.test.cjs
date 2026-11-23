@@ -561,3 +561,23 @@ test('Past results remain founder reports, not independently verified',()=>{
  const handler=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
  assert.match(handler,/evidence_source_type:'founder'/);
 });
+
+test('New text-based venture does not inherit identity of a previous saved profile',()=>{
+ const src=sourceBetween('function planVentureContext(){','function assessmentContext()');
+ const prior={name:'Older venture',description:'Old deep tech R&D startup',ventureType:'Deep tech / Research',stage:'Seed'};
+ const newPlan={fromDocument:false,businessDiagnosis:{primary_customer:'Independent farmers'},ventureIdentity:{name:'FieldNote',description:'Farm irrigation software',ventureType:'Software / SaaS',stage:'Prototype'},assessmentInputs:{ventureType:'Software / SaaS',stage:'Testing / Pilot',evidenceSoFar:'One pilot completed'},summary:'Irrigation tool'};
+ const result=vm.runInNewContext(src+'\nplanVentureContext()',{
+  state:{plan:newPlan},getContext:()=>prior
+ });
+ assert.equal(result.name,'FieldNote');
+ assert.equal(result.ventureType,'Software / SaaS');
+ assert.equal(result.stage,'Testing / Pilot');
+ assert.equal(result.description,'Farm irrigation software');
+ assert.equal(result.evidenceSoFar,'One pilot completed');
+});
+test('New idea and historical results do not send stale venture profile to assessment',()=>{
+ const handler=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
+ assert.match(handler,/!file&&!\$\('#ambitions'\)\.value\.trim\(\)&&!\$\('#planResults'\)\.value\.trim\(\)\?getContext\(\):\{\}/);
+ assert.match(handler,/ventureIdentity:\{name:data\.venture_name/);
+ assert.match(handler,/assessmentInputs:\{ventureType:/);
+});
