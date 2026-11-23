@@ -529,7 +529,8 @@ test('Compact start form exposes only three optional AI assessment questions',()
  assert.match(form,/value="Software \/ SaaS"/);
  assert.match(form,/value="Deep tech \/ Research"/);
  assert.match(form,/id="planStage"/);
- assert.match(form,/id="planCustomer"/);
+ assert.match(form,/id="planResults"/);
+ assert.match(form,/Milestones and results so far/);
  assert.match(form,/Let AI determine/);
  assert.doesNotMatch(form,/required(?=[\s>])/);
 });
@@ -537,7 +538,8 @@ test('Plan generation sends all three selections even with a PowerPoint upload',
  const handler=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
  assert.match(handler,/ventureType:\$\('#planBusinessType'\)\.value/);
  assert.match(handler,/stage:\$\('#planStage'\)\.value/);
- assert.match(handler,/primaryCustomer:\$\('#planCustomer'\)\.value\.trim\(\)/);
+ assert.match(handler,/evidenceSoFar:\$\('#planResults'\)\.value\.trim\(\)/);
+ assert.match(handler,/importedMilestoneStatus\(m,!!\(file\|\|\$\('#planResults'\)\.value\.trim\(\)\)\)/);
  assert.match(handler,/assessmentInputs:\{ventureType:/);
  assert.match(handler,/comparisonBusinessType=\$\('#planBusinessType'\)\.value\|\|inferredBusinessType/);
 });
@@ -545,4 +547,17 @@ test('Explicit business type takes precedence over ambiguous business descriptio
  const section=sourceBetween('function inferredBusinessType(){','/* Responsive planning routes');
  assert.match(section,/Object\.hasOwn\(businessPathDefaults,chosen\)/);
  assert.match(section,/if\(Object\.hasOwn\(businessPathDefaults,chosen\)\)return chosen/);
+});
+
+test('Past results can generate an achieved milestone without a file',()=>{
+ const handler=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
+ assert.match(handler,/!\$\('#planResults'\)\.value\.trim\(\)/);
+ const src=sourceBetween('function importedMilestoneStatus(', "$('#planForm').onsubmit=async");
+ const status=vm.runInNewContext(src+'\nimportedMilestoneStatus');
+ assert.equal(status({title:'Paid field pilot',reported_evidence:'One farm paid £450',evidence_source:'one farm paid £450',evidence_direction:'positive'},true),'Achieved');
+ assert.equal(status({title:'Future pilot',reported_evidence:'',evidence_source:'',evidence_direction:'none'},true),'Not started');
+});
+test('Past results remain founder reports, not independently verified',()=>{
+ const handler=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
+ assert.match(handler,/evidence_source_type:'founder'/);
 });
