@@ -524,12 +524,12 @@ body:not(.curve-open):not(.curve-loading) #planSection:has(.curve-placeholder) .
 const key='smallsteps-v1';const examples=[{id:'e1',title:'Had my first conversation with a potential customer',category:'Customer feedback',note:'A useful reminder that listening is a form of progress.',date:'2026-09-12',demo:true},{id:'e2',title:'Put the first version of my idea on paper',category:'Product',note:'It doesn’t need to be perfect to be a beginning.',date:'2026-10-03',demo:true},{id:'e3',title:'Made a connection with someone who can help',category:'Connection',note:'A new perspective and an encouraging conversation.',date:'2026-10-28',demo:true}];let state;try{state=JSON.parse(localStorage.getItem(key))||{entries:examples,next:''}}catch{state={entries:examples,next:''}};const $=s=>document.querySelector(s);function save(){localStorage.setItem(key,JSON.stringify(state))}function esc(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function format(d){return new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
 function getContext(){const p=state.profile||{};return {name:p.name||'',description:p.description||'',ventureType:p.ventureType||'',stage:p.stage||'',ambition:p.ambition||'',horizon:p.horizon||''}}
 function planVentureContext(){
- const p=state.plan||{};
+ const p=state.plan||{},choices=p.assessmentInputs||{};
  if(p.fromDocument){
   const v=p.ventureIdentity||{};
-  return {name:String(v.name||''),description:String(v.description||p.summary||''),ventureType:String(v.ventureType||''),stage:String(v.stage||''),ambition:String(p.ambition||''),horizon:String(p.horizon||'')};
+  return {name:String(v.name||''),description:String(v.description||p.summary||''),ventureType:String(choices.ventureType||v.ventureType||''),stage:String(choices.stage||v.stage||''),primaryCustomer:String(choices.primaryCustomer||''),ambition:String(p.ambition||''),horizon:String(p.horizon||'')};
  }
- return getContext();
+ return {...getContext(),ventureType:choices.ventureType||getContext().ventureType,stage:choices.stage||getContext().stage,primaryCustomer:choices.primaryCustomer||''};
 }
 function assessmentContext(){return {...planVentureContext(),planSummary:String(state.plan?.summary||'').slice(0,1000)}}
 function recentHistory(date,excludeId){return state.entries.filter(e=>!e.demo&&e.id!==excludeId&&typeof e.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(e.date)&&(!date||e.date<=date)).sort((a,b)=>a.date.localeCompare(b.date)).slice(-12).map(e=>({title:String(e.title||'').slice(0,300),date:e.date,category:String(e.category||'').slice(0,100)}))}
@@ -922,6 +922,7 @@ function importedMilestoneStatus(m,fromDocument){
 $('#planForm').onsubmit=async e=>{e.preventDefault();const file=$('#planFile').files[0];if(!file&&!$('#ambitions').value.trim()&&!getContext().description&&!getContext().ambition){$('#planStatus').textContent='Please select a document or describe your venture before creating a curve.';return}if(state.plan?.milestones?.length&&!confirm('Creating a new plan will replace the current plan. Continue?'))return;if(file&&file.size>2500000){$('#planStatus').textContent='Please choose a file under 2.5 MB.';return}let button=$('#generatePlan');if(button.disabled)return;button.disabled=true;button.textContent='Generating curve…';$('#planFile').disabled=true;$('#retryPlanAnalysis').hidden=true;$('#planStatus').textContent='';if(file)$('#selectedPlanFile').textContent=file.name+' · Analysing document…';$('#curveGeneratingMessage').textContent=file?'Reading '+file.name+'…':'Analysing your business idea…';document.body.classList.add('curve-loading');const timeoutController=new AbortController();const timeoutId=setTimeout(()=>timeoutController.abort(),60000);try{const base64=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Could not read the document.'));reader.readAsDataURL(file)}):'';$('#curveGeneratingMessage').textContent='Assessing evidence and building milestone paths…';let r=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'plan',name:file?.name||'',file:base64,ambitions:$('#ambitions').value.trim(),horizon:$('#horizon').value.trim(),context:{...(!file?getContext():{}),ventureType:$('#planBusinessType').value,stage:$('#planStage').value,primaryCustomer:$('#planCustomer').value.trim()}}),signal:timeoutController.signal});let data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||(r.status===413?'This file is too large for the server. Try a smaller presentation.':r.status===429?'The analysis service is busy. Please try again shortly.':r.status>=500?'The analysis service could not complete the request. Please retry.':'Could not generate the plan.'));if(!Array.isArray(data.milestones)||!data.milestones.length)throw Error('The analysis returned no usable milestones. Your existing curve has not changed. Please try again.');state.plan={summary:data.summary,businessDiagnosis:data.business_diagnosis||null,fromDocument:!!file,
  ventureIdentity:file?{name:data.venture_name||'',description:data.venture_description||data.summary||'',ventureType:$('#planBusinessType').value||data.venture_type||'',stage:$('#planStage').value||data.venture_stage||''}:null,
  ambition:$('#ambitions').value.trim(),horizon:$('#horizon').value.trim(),
+ assessmentInputs:{ventureType:$('#planBusinessType').value,stage:$('#planStage').value,primaryCustomer:$('#planCustomer').value.trim()},
  milestones:data.milestones.map(m=>({
   ...m,
   status:importedMilestoneStatus(m,!!file),
@@ -1327,6 +1328,8 @@ const businessPathDefaults={
 };
 function inferredBusinessType(){
  const p=planVentureContext();
+ const chosen=String(p.ventureType||'');
+ if(Object.hasOwn(businessPathDefaults,chosen))return chosen;
  const words=[p.ventureType,p.description,state.plan?.summary].filter(Boolean).join(' ').toLowerCase();
  if(/saas|software|platform|app\b|digital product/.test(words))return 'Software / SaaS';
  if(/deep.tech|scientific research|biotech|medtech|laboratory|clinical/.test(words))return 'Deep tech / Research';
