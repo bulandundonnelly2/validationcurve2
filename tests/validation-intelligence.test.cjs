@@ -510,3 +510,15 @@ test('Imported Achieved status alone never creates an actual validation score',(
  assert.ok(negative.value<0);
  assert.ok(negative.quality.score<40,'Founder claim is not independently verified');
 });
+
+test('Empty start page hides unused graph placeholder while retaining the upload form',()=>{
+ assert.match(html,/body:not\(\.curve-open\):not\(\.curve-loading\) #planView:has\(\.curve-placeholder\) \.curve-placeholder\{display:none!important\}/);
+ assert.match(html,/body:not\(\.curve-open\):not\(\.curve-loading\) #planSection:has\(\.curve-placeholder\) #planForm/);
+ assert.match(html,/id="planFile" accept="\.pdf,\.pptx,\.docx,\.txt"/);
+ assert.match(html,/id="ambitions" maxlength="2000"/);
+});
+test('Full validation curve layout is not changed by compact empty-state CSS',()=>{
+ const css=sourceBetween('/* The blank curve is not useful until there are milestones.', '</style>');
+ assert.doesNotMatch(css,/body\.curve-open\s/);
+ assert.match(css,/body:not\(\.curve-open\):not\(\.curve-loading\)/);
+});
