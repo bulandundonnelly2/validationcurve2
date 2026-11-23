@@ -894,12 +894,26 @@ box.innerHTML='<div class="milestone-map"><div class="map-header"><div class="ma
  }));
  $('#savePlanEdits').onclick=()=>{commitMilestoneFields();plan.milestones.forEach(m=>{if(m.status==='Achieved')m.title=String(m.title||'').replace(/\s*\(planned\)\s*$/i,'').trim()});save();renderPlan();};journey.querySelectorAll('[data-remove-plan]').forEach(btn=>btn.onclick=()=>{journey.querySelectorAll('[data-plan-field]').forEach(el=>plan.milestones[Number(el.dataset.planIndex)][el.dataset.planField]=el.value.trim());plan.milestones.splice(Number(btn.dataset.removePlan),1);save();renderPlan()});$('#addPlanItem').onclick=()=>{if(plan.milestones.length>=20){$('#planEditStatus').textContent='You can add up to 20 milestones.';return}journey.querySelectorAll('[data-plan-field]').forEach(el=>plan.milestones[Number(el.dataset.planIndex)][el.dataset.planField]=el.value.trim());plan.milestones.push({title:'New milestone',timeframe:'',target:'',evidence:'',assumption:'',status:'Not started'});save();renderPlan()}}
 $('#openPlan').onclick=()=>{$('#ambitions').value='';$('#horizon').value='';$('#planFile').value='';$('#planStatus').textContent='';$('#planForm').hidden=false;document.body.classList.remove('curve-open');document.body.classList.add('curve-editing');$('#ambitions').focus()};$('#cancelPlan').onclick=()=>{$('#planForm').hidden=true;document.body.classList.remove('curve-editing');if(state.plan?.milestones?.length)document.body.classList.add('curve-open')};
+// Import an event as Achieved only when the document supplies BOTH a
+// specific reported result and a supporting source excerpt. This is
+// founder-reported evidence, never independent verification.
+function importedMilestoneStatus(m,fromDocument){
+ if(!fromDocument)return 'Not started';
+ const report=String(m?.reported_evidence||'').trim();
+ const excerpt=String(m?.evidence_source||'').trim();
+ const direction=String(m?.evidence_direction||'none').trim().toLowerCase();
+ return report&&excerpt&&['positive','negative','mixed','unclear'].includes(direction)
+  ?'Achieved':'Not started';
+}
 $('#planForm').onsubmit=async e=>{e.preventDefault();const file=$('#planFile').files[0];if(!file&&!$('#ambitions').value.trim()&&!getContext().description&&!getContext().ambition){$('#planStatus').textContent='Please select a document or describe your venture before creating a curve.';return}if(state.plan?.milestones?.length&&!confirm('Creating a new plan will replace the current plan. Continue?'))return;if(file&&file.size>2500000){$('#planStatus').textContent='Please choose a file under 2.5 MB.';return}let button=$('#generatePlan');if(button.disabled)return;button.disabled=true;button.textContent='Generating curve…';$('#planFile').disabled=true;$('#retryPlanAnalysis').hidden=true;$('#planStatus').textContent='';if(file)$('#selectedPlanFile').textContent=file.name+' · Analysing document…';$('#curveGeneratingMessage').textContent=file?'Reading '+file.name+'…':'Analysing your business idea…';document.body.classList.add('curve-loading');const timeoutController=new AbortController();const timeoutId=setTimeout(()=>timeoutController.abort(),60000);try{const base64=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Could not read the document.'));reader.readAsDataURL(file)}):'';$('#curveGeneratingMessage').textContent='Assessing evidence and building milestone paths…';let r=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'plan',name:file?.name||'',file:base64,ambitions:$('#ambitions').value.trim(),horizon:$('#horizon').value.trim(),context:file?{}:getContext()}),signal:timeoutController.signal});let data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||(r.status===413?'This file is too large for the server. Try a smaller presentation.':r.status===429?'The analysis service is busy. Please try again shortly.':r.status>=500?'The analysis service could not complete the request. Please retry.':'Could not generate the plan.'));if(!Array.isArray(data.milestones)||!data.milestones.length)throw Error('The analysis returned no usable milestones. Your existing curve has not changed. Please try again.');state.plan={summary:data.summary,businessDiagnosis:data.business_diagnosis||null,fromDocument:!!file,
  ventureIdentity:file?{name:data.venture_name||'',description:data.venture_description||data.summary||'',ventureType:data.venture_type||'',stage:data.venture_stage||''}:null,
  ambition:$('#ambitions').value.trim(),horizon:$('#horizon').value.trim(),
  milestones:data.milestones.map(m=>({
   ...m,
-  status:'Not started',
+  status:importedMilestoneStatus(m,!!file),
+  // A source excerpt from the uploaded deck is a founder claim; do not
+  // promote it to an independently checked evidence source.
+  ...(importedMilestoneStatus(m,!!file)==='Achieved'?{evidence_source_type:'founder'}:{}),
   value_assessment:{
     potential_value:Number.isInteger(m.potential_value)?Math.max(0,Math.min(5,m.potential_value)):Math.max(0,Math.min(5,Number(m.validation_level)||1)),
     difficulty:Number.isInteger(m.difficulty)?Math.max(1,Math.min(5,m.difficulty)):3,
