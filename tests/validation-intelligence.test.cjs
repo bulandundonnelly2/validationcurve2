@@ -522,3 +522,27 @@ test('Full validation curve layout is not changed by compact empty-state CSS',()
  assert.doesNotMatch(css,/body\.curve-open\s/);
  assert.match(css,/body:not\(\.curve-open\):not\(\.curve-loading\)/);
 });
+
+test('Compact start form exposes only three optional AI assessment questions',()=>{
+ const form=sourceBetween('id="planForm"', '</form>');
+ assert.match(form,/id="planBusinessType"/);
+ assert.match(form,/value="Software \/ SaaS"/);
+ assert.match(form,/value="Deep tech \/ Research"/);
+ assert.match(form,/id="planStage"/);
+ assert.match(form,/id="planCustomer"/);
+ assert.match(form,/Let AI determine/);
+ assert.doesNotMatch(form,/required(?=[\s>])/);
+});
+test('Plan generation sends all three selections even with a PowerPoint upload',()=>{
+ const handler=sourceBetween("$('#planForm').onsubmit=async",'const ambitionProfiles=');
+ assert.match(handler,/ventureType:\$\('#planBusinessType'\)\.value/);
+ assert.match(handler,/stage:\$\('#planStage'\)\.value/);
+ assert.match(handler,/primaryCustomer:\$\('#planCustomer'\)\.value\.trim\(\)/);
+ assert.match(handler,/assessmentInputs:\{ventureType:/);
+ assert.match(handler,/comparisonBusinessType=\$\('#planBusinessType'\)\.value\|\|inferredBusinessType/);
+});
+test('Explicit business type takes precedence over ambiguous business descriptions',()=>{
+ const section=sourceBetween('function inferredBusinessType(){','/* Responsive planning routes');
+ assert.match(section,/Object\.hasOwn\(businessPathDefaults,chosen\)/);
+ assert.match(section,/if\(Object\.hasOwn\(businessPathDefaults,chosen\)\)return chosen/);
+});
