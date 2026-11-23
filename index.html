@@ -525,11 +525,14 @@ const key='smallsteps-v1';const examples=[{id:'e1',title:'Had my first conversat
 function getContext(){const p=state.profile||{};return {name:p.name||'',description:p.description||'',ventureType:p.ventureType||'',stage:p.stage||'',ambition:p.ambition||'',horizon:p.horizon||''}}
 function planVentureContext(){
  const p=state.plan||{},choices=p.assessmentInputs||{};
- if(p.fromDocument){
+ // An AI-generated new plan, whether from a deck or typed text, defines its
+ // own venture. Never substitute a stored profile from a previous business.
+ if(p.fromDocument||p.businessDiagnosis||p.ventureIdentity){
   const v=p.ventureIdentity||{};
   return {name:String(v.name||''),description:String(v.description||p.summary||''),ventureType:String(choices.ventureType||v.ventureType||''),stage:String(choices.stage||v.stage||''),evidenceSoFar:String(choices.evidenceSoFar||''),ambition:String(p.ambition||''),horizon:String(p.horizon||'')};
  }
- return {...getContext(),ventureType:choices.ventureType||getContext().ventureType,stage:choices.stage||getContext().stage,evidenceSoFar:choices.evidenceSoFar||''};
+ const profile=getContext();
+ return {...profile,ventureType:choices.ventureType||profile.ventureType,stage:choices.stage||profile.stage,evidenceSoFar:choices.evidenceSoFar||''};
 }
 function assessmentContext(){return {...planVentureContext(),planSummary:String(state.plan?.summary||'').slice(0,1000)}}
 function recentHistory(date,excludeId){return state.entries.filter(e=>!e.demo&&e.id!==excludeId&&typeof e.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(e.date)&&(!date||e.date<=date)).sort((a,b)=>a.date.localeCompare(b.date)).slice(-12).map(e=>({title:String(e.title||'').slice(0,300),date:e.date,category:String(e.category||'').slice(0,100)}))}
@@ -920,7 +923,7 @@ function importedMilestoneStatus(m,fromDocument){
   ?'Achieved':'Not started';
 }
 $('#planForm').onsubmit=async e=>{e.preventDefault();const file=$('#planFile').files[0];if(!file&&!$('#ambitions').value.trim()&&!$('#planResults').value.trim()&&!getContext().description&&!getContext().ambition){$('#planStatus').textContent='Please select a document or describe your venture before creating a curve.';return}if(state.plan?.milestones?.length&&!confirm('Creating a new plan will replace the current plan. Continue?'))return;if(file&&file.size>2500000){$('#planStatus').textContent='Please choose a file under 2.5 MB.';return}let button=$('#generatePlan');if(button.disabled)return;button.disabled=true;button.textContent='Generating curve…';$('#planFile').disabled=true;$('#retryPlanAnalysis').hidden=true;$('#planStatus').textContent='';if(file)$('#selectedPlanFile').textContent=file.name+' · Analysing document…';$('#curveGeneratingMessage').textContent=file?'Reading '+file.name+'…':'Analysing your business idea…';document.body.classList.add('curve-loading');const timeoutController=new AbortController();const timeoutId=setTimeout(()=>timeoutController.abort(),60000);try{const base64=file?await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error('Could not read the document.'));reader.readAsDataURL(file)}):'';$('#curveGeneratingMessage').textContent='Assessing evidence and building milestone paths…';let r=await fetch('/api/assess',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'plan',name:file?.name||'',file:base64,ambitions:$('#ambitions').value.trim(),horizon:$('#horizon').value.trim(),context:{...(!file?getContext():{}),ventureType:$('#planBusinessType').value,stage:$('#planStage').value,evidenceSoFar:$('#planResults').value.trim()}}),signal:timeoutController.signal});let data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||(r.status===413?'This file is too large for the server. Try a smaller presentation.':r.status===429?'The analysis service is busy. Please try again shortly.':r.status>=500?'The analysis service could not complete the request. Please retry.':'Could not generate the plan.'));if(!Array.isArray(data.milestones)||!data.milestones.length)throw Error('The analysis returned no usable milestones. Your existing curve has not changed. Please try again.');state.plan={summary:data.summary,businessDiagnosis:data.business_diagnosis||null,fromDocument:!!file,
- ventureIdentity:file?{name:data.venture_name||'',description:data.venture_description||data.summary||'',ventureType:$('#planBusinessType').value||data.venture_type||'',stage:$('#planStage').value||data.venture_stage||''}:null,
+ ventureIdentity:{name:data.venture_name||'',description:data.venture_description||data.summary||'',ventureType:$('#planBusinessType').value||data.venture_type||'',stage:$('#planStage').value||data.venture_stage||''},
  ambition:$('#ambitions').value.trim(),horizon:$('#horizon').value.trim(),
  assessmentInputs:{ventureType:$('#planBusinessType').value,stage:$('#planStage').value,evidenceSoFar:$('#planResults').value.trim()},
  milestones:data.milestones.map(m=>({
