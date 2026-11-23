@@ -581,3 +581,35 @@ test('New idea and historical results do not send stale venture profile to asses
  assert.match(handler,/ventureIdentity:\{name:data\.venture_name/);
  assert.match(handler,/assessmentInputs:\{ventureType:/);
 });
+
+test('Growth-route step count validator enforces chosen maximum',()=>{
+ const api=fs.readFileSync(path.join(__dirname,'../api/assess.js'),'utf8');
+ const start=api.indexOf('function routeStepCountIssue(');
+ const end=api.indexOf('async function generateGrowthRoutes(',start);
+ assert.ok(start>=0&&end>start,'Route step count helper exists');
+ const check=vm.runInNewContext(api.slice(start,end)+'\nrouteStepCountIssue');
+ assert.equal(check({steps:[{}, {}, {}]},3),'');
+ assert.equal(check({steps:[{}, {}, {}, {}]},3),'exceeded the selected maximum of 3 milestones');
+ assert.equal(check({steps:[{}, {}]},6),'needs at least three distinct milestones');
+ assert.equal(check({steps:null},6),'is missing its milestone steps');
+});
+test('Route response schema constrains max steps dynamically',()=>{
+ const api=fs.readFileSync(path.join(__dirname,'../api/assess.js'),'utf8');
+ assert.match(api,/steps:\{\.\.\.routeProps\.steps,maxItems:count\}/);
+ assert.match(api,/const stepIssue=routeStepCountIssue\(parsedOne\.route,count\)/);
+ assert.match(api,/if\(attempt===0\)\{critique=stepIssue;continue\}/);
+ assert.match(api,/const stepIssue=routeStepCountIssue\(route,count\)/);
+});
+test('Growth-route generation retries timeout and incomplete JSON at most once',()=>{
+ const api=fs.readFileSync(path.join(__dirname,'../api/assess.js'),'utf8');
+ const start=api.indexOf('async function requestOneRoute(');
+ const end=api.indexOf('const generated=await Promise.allSettled(',start);
+ assert.ok(start>=0&&end>start,'Per-route retry helper present');
+ const request=api.slice(start,end);
+ assert.match(request,/for\(let attempt=0;attempt<2;attempt\+\+\)/);
+ assert.match(request,/if\(timeout&&attempt===0\)/);
+ assert.match(request,/if\(attempt===0\)\{critique='The previous response was empty/);
+ assert.match(request,/if\(attempt===0\)\{critique='The previous response was incomplete JSON/);
+ assert.match(request,/if\(attempt===0\)\{critique='The response did not contain route /);
+ assert.match(request,/throw err/);
+});

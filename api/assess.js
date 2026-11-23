@@ -65,6 +65,14 @@ function researchRouteCompatibility(context, milestones){
  }
  return {restricted:false};
 }
+// Keep the requested step count as a strict maximum. Never quietly truncate
+// generated steps: that would invalidate cumulative target trajectories.
+function routeStepCountIssue(route,count){
+ if(!route||!Array.isArray(route.steps))return 'is missing its milestone steps';
+ if(route.steps.length<3)return 'needs at least three distinct milestones';
+ if(route.steps.length>count)return 'exceeded the selected maximum of '+count+' milestones';
+ return '';
+}
 async function generateGrowthRoutes(req,res){
  const c=readContext(req.body?.context),input=req.body||{},count=Number(input.count);
  const ids=['steady','hockey','s','steps','long'];
@@ -98,6 +106,9 @@ async function generateGrowthRoutes(req,res){
    type:'object',
    properties:{route:{type:'object',properties:{
     ...routeProps,
+    // The selected maximum must constrain the model schema, not just the
+    // instructions: otherwise it can return seven steps for a six-step request.
+    steps:{...routeProps.steps,maxItems:count},
     recommendation_priority:{type:'integer',minimum:0,maximum:5}
    },required:[...Object.keys(routeProps),'recommendation_priority'],additionalProperties:false}},
    required:['route'],additionalProperties:false
@@ -107,7 +118,8 @@ async function generateGrowthRoutes(req,res){
    let critique='';
    for(let attempt=0;attempt<2;attempt++){
     const perRouteInstructions=instructions+'\nGenerate ONLY the '+id+' route, not all five. Output JSON containing exactly one field: route. route.id MUST equal '+id+'. Include recommendation_priority 0–5. Keep content concise, specific, and realistic.'+(critique?'\nPREVIOUS RESPONSE REJECTED: '+critique+'. Rewrite the entire route with measurable venture-specific steps, no generic phases.':'');
-    const response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
+    let response;
+    try{response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
      method:'POST',headers:{'content-type':'application/json','x-goog-api-key':process.env.GEMINI_API_KEY},
      body:JSON.stringify({
       systemInstruction:{parts:[{text:perRouteInstructions}]},
@@ -115,7 +127,18 @@ async function generateGrowthRoutes(req,res){
       generationConfig:{responseMimeType:'application/json',responseJsonSchema:schemaForRoute,maxOutputTokens:7200,thinkingConfig:{thinkingBudget:0}}
      }),
      signal:AbortSignal.timeout(24000)
-    });
+    });}
+    catch(err){
+     // One route timing out should be retried once without discarding
+     // successfully generated siblings.
+     const timeout=err?.name==='TimeoutError'||err?.name==='AbortError';
+     if(timeout&&attempt===0){
+      critique='The previous request timed out. Return a concise complete JSON route within the step limit';
+      console.warn('growth_route_timeout_retry',{route:id});
+      continue;
+     }
+     throw err;
+    }
     if(!response.ok){
      let reason='';
      try{const data=await response.json();reason=String(data.error?.message||'').slice(0,300)}catch{}
@@ -125,13 +148,26 @@ async function generateGrowthRoutes(req,res){
     }
     const data=await response.json(),candidate=data.candidates?.[0];
     const output=candidate?.content?.parts?.map(p=>p.text||'').join('')||'';
-    if(!output)throw new Error('Gemini returned an empty response for '+id);
+    if(!output){
+     if(attempt===0){critique='The previous response was empty. Return valid complete route JSON';continue}
+     throw new Error('Gemini returned an empty response for '+id);
+    }
     let parsedOne;
     try{parsedOne=JSON.parse(output)}catch{
      console.error('growth_route_incomplete_json',{route:id,finishReason:candidate?.finishReason||'unknown',length:output.length});
+     if(attempt===0){critique='The previous response was incomplete JSON. Return a concise complete route';continue}
      throw new Error('Gemini returned incomplete JSON for '+id);
     }
-    if(!parsedOne.route||parsedOne.route.id!==id)throw new Error('Gemini returned incorrect route '+id);
+    if(!parsedOne.route||parsedOne.route.id!==id){
+     if(attempt===0){critique='The response did not contain route '+id+'. Return only that route';continue}
+     throw new Error('Gemini returned incorrect route '+id);
+    }
+    const stepIssue=routeStepCountIssue(parsedOne.route,count);
+    if(stepIssue){
+     console.warn('growth_route_step_retry',{route:id,attempt:attempt+1,reason:stepIssue});
+     if(attempt===0){critique=stepIssue;continue}
+     throw new Error('Route '+id+' '+stepIssue);
+    }
     const grounding=assessRouteSpecificity(parsedOne.route,c,milestones);
     const diagnostic=diagnoseRoute(parsedOne.route);
     if(grounding.ok&&diagnostic.matches){
@@ -182,7 +218,8 @@ async function generateGrowthRoutes(req,res){
   const routes=[];
   for(const id of ids){
    const route=parsed.routes.find(r=>r.id===id);
-   if(!route||!Array.isArray(route.steps)||route.steps.length<3||route.steps.length>count)throw Error('Invalid number of steps');
+   const stepIssue=routeStepCountIssue(route,count);
+   if(stepIssue)throw Error('Route '+id+' '+stepIssue);
    let prev=Number(route.metric_baseline),lastMonth=0;
    if(!Number.isFinite(prev)||prev<0)throw Error('Invalid baseline');
    const grounded=assessRouteSpecificity(route,c,milestones);
