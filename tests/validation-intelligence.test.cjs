@@ -531,7 +531,7 @@ test('Compact start form exposes only three optional AI assessment questions',()
  assert.match(form,/id="planStage"/);
  assert.match(form,/id="planResults"/);
  assert.match(form,/Milestones and results so far/);
- assert.match(form,/Let AI determine/);
+ assert.match(form,/Not sure — suggest one/);
  assert.doesNotMatch(form,/required(?=[\s>])/);
 });
 test('Plan generation sends all three selections even with a PowerPoint upload',()=>{
