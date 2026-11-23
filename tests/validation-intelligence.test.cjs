@@ -487,7 +487,7 @@ test('Historical document outcomes import as Achieved with founder-reported prov
  assert.equal(status({...past,evidence_direction:'mixed'},true),'Achieved');
  assert.equal(status({...past,evidence_direction:'unclear'},true),'Achieved');
  const submit=sourceBetween("$('#planForm').onsubmit=async", 'const ambitionProfiles=');
- assert.match(submit,/status:importedMilestoneStatus\(m,!!file\)/);
+ assert.match(submit,/status:importedMilestoneStatus\(m,!!\(file\|\|\$\('#planResults'\)\.value\.trim\(\)\)\)/);
  assert.match(submit,/evidence_source_type:'founder'/);
 });
 test('Future, unsourced and no-outcome milestones stay Not started on PPTX import',()=>{
