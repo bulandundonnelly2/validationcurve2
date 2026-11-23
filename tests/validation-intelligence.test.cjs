@@ -477,3 +477,36 @@ test('Failed document processing keeps the selected PPTX and shows a visible ret
  assert.match(submit,/if\(button\.disabled\)return/);
  assert.match(html,/id="retryPlanAnalysis" hidden/);
 });
+
+test('Historical document outcomes import as Achieved with founder-reported provenance',()=>{
+ const src=sourceBetween('function importedMilestoneStatus(', "$('#planForm').onsubmit=async");
+ const status=vm.runInNewContext(src+'\nimportedMilestoneStatus');
+ const past={title:'Supervised field trial',reported_evidence:'Three sensors operated for 21 days',evidence_source:'Reported in uploaded pitch deck',evidence_direction:'positive'};
+ assert.equal(status(past,true),'Achieved');
+ assert.equal(status({...past,evidence_direction:'negative'},true),'Achieved');
+ assert.equal(status({...past,evidence_direction:'mixed'},true),'Achieved');
+ assert.equal(status({...past,evidence_direction:'unclear'},true),'Achieved');
+ const submit=sourceBetween("$('#planForm').onsubmit=async", 'const ambitionProfiles=');
+ assert.match(submit,/status:importedMilestoneStatus\(m,!!file\)/);
+ assert.match(submit,/evidence_source_type:'founder'/);
+});
+test('Future, unsourced and no-outcome milestones stay Not started on PPTX import',()=>{
+ const src=sourceBetween('function importedMilestoneStatus(', "$('#planForm').onsubmit=async");
+ const status=vm.runInNewContext(src+'\nimportedMilestoneStatus');
+ const past={reported_evidence:'Observed trial result',evidence_source:'Source excerpt',evidence_direction:'positive'};
+ assert.equal(status(past,false),'Not started');
+ assert.equal(status({...past,reported_evidence:''},true),'Not started');
+ assert.equal(status({...past,evidence_source:''},true),'Not started');
+ assert.equal(status({...past,evidence_direction:'none'},true),'Not started');
+ assert.equal(status({title:'Planned customer pilot',reported_evidence:'',evidence_source:'',evidence_direction:'none'},true),'Not started');
+});
+test('Imported Achieved status alone never creates an actual validation score',()=>{
+ const reported={title:'Field trial',status:'Achieved',reported_evidence:'Trial happened',evidence_source:'Pitch deck excerpt',evidence_direction:'unclear',evidence_source_type:'founder'};
+ const impact=score.milestoneImpact(reported,4,'unclear');
+ assert.equal(impact.value,0);
+ assert.equal(impact.achieved,true);
+ assert.equal(impact.hasScoredOutcome,false);
+ const negative=score.milestoneImpact({...reported,evidence_direction:'negative'},4,'negative');
+ assert.ok(negative.value<0);
+ assert.ok(negative.quality.score<40,'Founder claim is not independently verified');
+});
